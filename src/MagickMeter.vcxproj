@@ -117,6 +117,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="FromFile.cpp" />
+    <ClCompile Include="FromGradient.cpp" />
     <ClCompile Include="FromShape.cpp" />
     <ClCompile Include="FromText.cpp" />
     <ClCompile Include="MagickMeter.cpp" />

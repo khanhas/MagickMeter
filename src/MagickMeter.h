@@ -9,26 +9,43 @@
 #include "Magick++.h"
 #include "..\..\API\RainmeterAPI.h"
 
+typedef std::vector<std::wstring> WSVector;
+#define INVISIBLE Magick::Color("transparent")
+
+struct ImgStruct
+{
+	Magick::Image	contain;
+	BOOL			isDelete = FALSE;
+	int				width = contain.columns();
+	int				height = contain.rows();
+};
+
 struct Measure
 {
 	void* skin;
 	void* rm;
 	std::wstring name;
 	std::wstring outputFile;
+	std::vector<ImgStruct *> imgList;
+	Magick::Image finalImg;
 	BOOL isGIF = FALSE;
 	std::vector<Magick::Image> gifList;
 	int GIFSeq = 0;
+	/*HWND magickHwnd;
+	WNDCLASS winClass = { 0 };
+	HBITMAP thisBM;*/
 };
 
 std::string ws2s(const std::wstring& wstr);
 std::wstring s2ws(const std::string& str);
-std::vector<std::wstring> SeparateList(LPCWSTR rawString, wchar_t* separtor, int maxElement, wchar_t* defValue = L"0");
-Magick::ColorRGB GetColor(LPCWSTR rawString);
+WSVector SeparateList(std::wstring rawString, wchar_t* separtor, int maxElement, wchar_t* defValue = L"0");
+Magick::Color GetColor(std::wstring rawString);
 std::wstring TrimString(std::wstring bloatedString);
 int NameToIndex(std::wstring name);
 BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring para);
 void GetNamePara(std::wstring input, std::wstring& name, std::wstring& para);
-std::wstring error2pws(std::exception &error);
+void error2pws(Magick::Exception error);
+void ParseExtend(void * rm, WSVector &parentVector, std::wstring parentName, BOOL isRecursion = FALSE);
 
 typedef enum 
 {
@@ -37,20 +54,14 @@ typedef enum
 	TEXT,
 	ELLIPSE,
 	RECTANGLE,
-	PATH,
-	LINE,
-	CURVE,
+	PATH,		//possibly
+	LINE,		//possibly
+	CURVE,		//possibly
 	ARC,		//possibly
 	COMBINE,
-	REFERENCE
+	CLONE,
+	GRADIENT
 } ImgType ;
-
-struct ImgStruct
-{
-	Magick::Image	contain;
-	ImgType			type		= NOTYPE;
-	BOOL			isDelete	= FALSE;
-};
 
 namespace MathParser
 {

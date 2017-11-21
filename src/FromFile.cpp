@@ -1,44 +1,46 @@
 #include "MagickMeter.h"
 #include <filesystem>
 
-BOOL CreateNew(ImgStruct * dst, std::vector<std::wstring> setting, Measure * measure)
+BOOL CreateNew(ImgStruct * dst, WSVector setting, Measure * measure)
 {
-	if (measure->isGIF)
+	/*if (measure->isGIF)
 	{
 		dst->contain = measure->gifList[measure->GIFSeq];
 		goto AddEffect;
-	}
+	}*/
+
+	std::wstring baseFile = setting[0];
+	setting.erase(setting.begin());
 
 	try
 	{
 		std::string targetFile;
 		BOOL isSS = FALSE;
-		if (_wcsnicmp(setting[0].c_str(), L"SCREENSHOT", 10) == 0)
+		if (_wcsnicmp(baseFile.c_str(), L"SCREENSHOT", 10) == 0)
 		{
 			isSS = TRUE;
-			if (setting.size() > 0 && _wcsnicmp(setting[1].c_str(), L"AUTOHIDE", 8) == 0)
+			if (setting.size() > 0 && _wcsnicmp(setting[0].c_str(), L"AUTOHIDE", 8) == 0)
 			{
-				double autoHide = 1;
-				MathParser::CheckedParse(setting[1].substr(8), &autoHide);			
+				int autoHide = MathParser::ParseI(setting[0].substr(8));
 				isSS = (autoHide == 1);
-				setting.erase(setting.begin() + 1);
+				setting.erase(setting.begin());
 			}
 			targetFile = "screenshot:";
-			if (setting[0].find(L"@", 10) != std::wstring::npos)
-				targetFile += "[" + ws2s(setting[0].substr(11).c_str()) + "]";
+			size_t monitorFlag = baseFile.find(L"@", 10);
+			if (monitorFlag != std::wstring::npos && monitorFlag + 1 != baseFile.length())
+				targetFile += "[" + std::to_string(MathParser::ParseI(baseFile.substr(11))) + "]";
+			RmLog(2, s2ws(targetFile).c_str());
 		}
 		else //A FILE PATH
 		{
-			targetFile = ws2s(setting[0]);
+			targetFile = ws2s(baseFile);
 		}
 
-		setting.erase(setting.begin());
 
 		BOOL isDefinedSize = FALSE;
-		__int64 width = 0;
-		__int64 height = 0;
+		Magick::Geometry defineSize;
 
-		if (setting.size() > 0)
+		if (!setting[0].empty())
 		{
 			isDefinedSize = _wcsnicmp(setting[0].c_str(), L"CANVAS", 6) == 0;
 
@@ -48,14 +50,41 @@ BOOL CreateNew(ImgStruct * dst, std::vector<std::wstring> setting, Measure * mea
 				if (start != std::wstring::npos)
 				{
 					setting[0] = setting[0].substr(start);
-					std::vector<std::wstring> imgSize =
-						SeparateList(setting[0].c_str(), L",", 2);
+					WSVector imgSize =
+						SeparateList(setting[0].c_str(), L",", 3);
 
-					width  = MathParser::ParseI(imgSize[0]);
-					height = MathParser::ParseI(imgSize[1]);
+					int width  = MathParser::ParseI(imgSize[0]);
+					int height = MathParser::ParseI(imgSize[1]);
 
 					if (!(width > 0 && height > 0))
+					{
+						RmLogF(measure->rm, 2, L"%s: Invalid Canvas width or height values. Read image at normal size.", baseFile);
 						isDefinedSize = FALSE;
+					}
+					else
+					{
+						defineSize.width(width);
+						defineSize.height(height);
+						int resizeType = MathParser::ParseI(imgSize[2]);
+						switch (resizeType)
+						{
+						case 1:
+							defineSize.aspect(true);
+							break;
+						case 2:
+							defineSize.fillArea(true);
+							break;
+						case 3:
+							defineSize.greater(true);
+							break;
+						case 4:
+							defineSize.less(true);
+							break;
+						case 5:
+							defineSize.limitPixels(true);
+							break;
+						}
+					}
 				}
 				else
 					isDefinedSize = FALSE;
@@ -64,23 +93,29 @@ BOOL CreateNew(ImgStruct * dst, std::vector<std::wstring> setting, Measure * mea
 			}
 		}
 
+		//Safety net for invalid file path to prevent crashing.
+		dst->contain.ping(targetFile);
+
+		if (isSS) RmExecute(measure->skin, L"!SetTransparency 0");
+
 		if (isDefinedSize)
 		{
-			if (isSS) RmExecute(measure->skin, L"!SetTransparency 0");
-			dst->contain.read(Magick::Geometry(width, height), targetFile);
-			if (isSS) RmExecute(measure->skin, L"!SetTransparency 255");
+			//TODO: CRASH!
+			dst->contain.read(defineSize, targetFile); //Why it just works with SVG?
+			dst->contain.resize(defineSize);
 		}
 		else
 		{
-			if (isSS) RmExecute(measure->skin, L"!SetTransparency 0");
 			dst->contain.read(targetFile);
-			if (isSS) RmExecute(measure->skin, L"!SetTransparency 255");
 		}
-			
+		
+		if (isSS) RmExecute(measure->skin, L"!SetTransparency 255");
+
+		if (!dst->contain.isValid()) return FALSE;
 
 		dst->contain.strip();
 
-		LPCWSTR fileExt = s2ws(dst->contain.magick()).c_str();
+		/*LPCWSTR fileExt = s2ws(dst->contain.magick()).c_str();
 		RmLog(2, fileExt);
 		if (_wcsicmp(fileExt, L"GIF") == 0 ||
 			_wcsicmp(fileExt, L"MP4") == 0 ||
@@ -98,15 +133,15 @@ BOOL CreateNew(ImgStruct * dst, std::vector<std::wstring> setting, Measure * mea
 			}
 			dst->contain = measure->gifList[0];
 			measure->isGIF = TRUE;
-		}
+		}*/
 	}
-	catch(std::exception &error_)
+	catch(Magick::Exception &error_)
 	{
-		RmLogF(measure->rm, 1, L"MagickMeter Plugin: %s", error2pws(error_));
+		error2pws(error_);
 		return FALSE;
 	}
 
-	AddEffect:
+	//AddEffect:
 	for (auto &settingIt : setting)
 	{
 		std::wstring name, parameter;

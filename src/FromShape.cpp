@@ -1,6 +1,6 @@
 #include "MagickMeter.h"
 
-struct ShapeEllipse 
+struct ShapeEllipse
 {
 	double x = 0;
 	double y = 0;
@@ -21,49 +21,56 @@ struct ShapeRectangle
 	auto CreateRound(void)	{ return Magick::DrawableRoundRectangle(x, y, x + w, y + h, cornerX, cornerY == 0 ? cornerX : cornerY); }
 };
 
-BOOL CreateShape(ImgStruct * dst, std::vector<std::wstring> setting, ImgType shape, Measure * measure)
+BOOL CreateShape(ImgStruct * dst, WSVector setting, ImgType shape, Measure * measure)
 {
+	std::wstring parameter = setting[0];
+	setting.erase(setting.begin());
+
 	std::vector<Magick::Drawable> drawList;
-	std::vector<std::wstring> paraList;
+	Magick::Drawable mainShape;
+	WSVector paraList;
 	switch (shape)
 	{
 	case ELLIPSE:
 	{
-		std::wstring parameter = setting[0].substr(setting[0].find_first_not_of(L" \t\r\n", 7));
-		paraList = SeparateList(parameter.c_str(), L",", 4);
+		paraList = SeparateList(parameter, L",", 4);
 		ShapeEllipse e;
-		MathParser::CheckedParse(paraList[0], &e.x);
-		MathParser::CheckedParse(paraList[1], &e.y);
-		MathParser::CheckedParse(paraList[2], &e.radiusX);
-		MathParser::CheckedParse(paraList[3], &e.radiusY);
-		drawList.push_back(e.Create());
+		e.x = MathParser::ParseF(paraList[0]);
+		e.y = MathParser::ParseF(paraList[1]);
+		e.radiusX = MathParser::ParseF(paraList[2]);
+		e.radiusY = MathParser::ParseF(paraList[3]);
+		mainShape = e.Create();
 		break;
 	}
 	case RECTANGLE:
 	{
-		std::wstring parameter = setting[0].substr(setting[0].find_first_not_of(L" \t\r\n", 9));
-		paraList = SeparateList(parameter.c_str(), L",", 6);
+		paraList = SeparateList(parameter, L",", 6);
 		ShapeRectangle r;
-		MathParser::CheckedParse(paraList[0], &r.x);
-		MathParser::CheckedParse(paraList[1], &r.y);
-		MathParser::CheckedParse(paraList[2], &r.w);
-		MathParser::CheckedParse(paraList[3], &r.h);
-		MathParser::CheckedParse(paraList[4], &r.cornerX);
-		MathParser::CheckedParse(paraList[5], &r.cornerY);
+		r.x = MathParser::ParseF(paraList[0]);
+		r.y = MathParser::ParseF(paraList[1]);
+		r.w = MathParser::ParseF(paraList[2]);
+		r.h = MathParser::ParseF(paraList[3]);
+		r.cornerX = MathParser::ParseF(paraList[4]);
+		r.cornerY = MathParser::ParseF(paraList[5]);
 		if (r.cornerX == 0 && r.cornerY == 0)
-			drawList.push_back(r.Create());
+			mainShape =  r.Create();
 		else
-			drawList.push_back(r.CreateRound());
+			mainShape = r.CreateRound();
 		break;
 	}
 	}
 
-	setting.erase(setting.begin());
-
 	size_t width = 600;
 	size_t height = 600;
 
-	for (int i = setting.size() - 1; i >= 0; i--)
+	int strokeAlign = 0;
+	double strokeWidth = 0;
+
+	//Default color
+	drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
+	drawList.push_back(Magick::DrawableStrokeColor(Magick::Color("transparent")));
+
+	for (int i = 0; i < setting.size(); i++)
 	{
 		std::wstring tempName, tempParameter;
 		GetNamePara(setting[i], tempName, tempParameter);
@@ -73,9 +80,9 @@ BOOL CreateShape(ImgStruct * dst, std::vector<std::wstring> setting, ImgType sha
 		BOOL isSetting = FALSE;
 		if (_wcsicmp(name, L"CANVAS") == 0)
 		{
-			std::vector<std::wstring> valList = SeparateList(parameter, L",", 2);
-			int tempW = _wtoi(valList[0].c_str());
-			int tempH = _wtoi(valList[1].c_str());
+			WSVector valList = SeparateList(parameter, L",", 2);
+			int tempW = MathParser::ParseI(valList[0]);
+			int tempH = MathParser::ParseI(valList[1]);
 
 			if (tempW <= 0 || tempH <= 0)
 				RmLog(2, L"Invalid Width or Height value. Default canvas 600x600 is used.");
@@ -86,6 +93,22 @@ BOOL CreateShape(ImgStruct * dst, std::vector<std::wstring> setting, ImgType sha
 			}
 			isSetting = TRUE;
 		}
+		else if (_wcsicmp(name, L"MOVE") == 0)
+		{
+			WSVector valList = SeparateList(parameter, L",", 2);
+			drawList.push_back(Magick::DrawableTranslation(
+				MathParser::ParseF(valList[0]),
+				MathParser::ParseF(valList[1])
+			));
+			isSetting = TRUE;
+		}
+		else if (_wcsicmp(name, L"ROTATE") == 0)
+		{
+			drawList.push_back(Magick::DrawableRotation(
+				MathParser::ParseF(parameter)
+			));
+			isSetting = TRUE;
+		}
 		else if (_wcsicmp(name, L"COLOR") == 0)
 		{
 			drawList.push_back(Magick::DrawableFillColor(GetColor(parameter)));
@@ -93,7 +116,7 @@ BOOL CreateShape(ImgStruct * dst, std::vector<std::wstring> setting, ImgType sha
 		}
 		else if (_wcsicmp(name, L"ANTIALIAS") == 0)
 		{
-			drawList.push_back(Magick::DrawableStrokeAntialias(_wtoi(parameter) == 1));
+			drawList.push_back(Magick::DrawableStrokeAntialias(MathParser::ParseI(parameter) == 1));
 			isSetting = TRUE;
 		}
 		if (_wcsicmp(name, L"STROKECOLOR") == 0)
@@ -103,27 +126,62 @@ BOOL CreateShape(ImgStruct * dst, std::vector<std::wstring> setting, ImgType sha
 		}
 		else if (_wcsicmp(name, L"STROKEWIDTH") == 0)
 		{
-			drawList.push_back(Magick::DrawableStrokeWidth(_wtof(parameter)));
+			strokeWidth = MathParser::ParseF(parameter);
+			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth));
 			isSetting = TRUE;
 		}
+		else if (_wcsicmp(name, L"STROKEALIGN") == 0)
+		{
+			if (_wcsicmp(parameter, L"CENTER") == 0)
+				strokeAlign = 0;
 
+			else if (_wcsicmp(parameter, L"OUTSIDE") == 0)
+				strokeAlign = 1;
+
+			else if (_wcsicmp(parameter, L"INSIDE") == 0)
+				strokeAlign = 2;
+			else
+			{
+				RmLog(2, L"Invalid StrokeAlign value. Center align is applied.");
+			}
+			isSetting = TRUE;
+		}
 		if (isSetting)
-			setting.erase(setting.begin() + i);
+			setting[i] = L"";
 	}
-	dst->contain = Magick::Image(Magick::Geometry(width, height), Magick::ColorRGB(1, 1, 1, 0));
 
 	try
 	{
-		dst->contain.draw(drawList);
+		dst->contain = Magick::Image(Magick::Geometry(width, height), INVISIBLE);
+		drawList.push_back(mainShape);
+		if (strokeWidth != 0 && strokeAlign != 0)
+		{
+			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth * 2));
+			dst->contain.draw(drawList);
+			drawList.push_back(Magick::DrawableStrokeWidth(0));
+			Magick::Image temp = Magick::Image(Magick::Geometry(width, height), INVISIBLE);
+			temp.draw(drawList);
+			if (strokeAlign == 1)
+			{
+				dst->contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
+			}
+			else if (strokeAlign == 2)
+			{
+				dst->contain.composite(temp, 0, 0, MagickCore::CopyAlphaCompositeOp);
+			}
+		}
+		else
+			dst->contain.draw(drawList);
 	}
-	catch (std::exception &error_)
+	catch (Magick::Exception &error_)
 	{
-		RmLogF(measure->rm, 1, L"%s", error2pws(error_));
+		error2pws(error_);
 		return FALSE;
 	}
 
 	for (auto &settingIt : setting)
 	{
+		if (settingIt.empty()) continue;
 		std::wstring name, parameter;
 		GetNamePara(settingIt, name, parameter);
 

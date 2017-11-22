@@ -16,17 +16,17 @@ struct ImgStruct
 {
 	Magick::Image	contain;
 	BOOL			isDelete = FALSE;
-	int				width = contain.columns();
-	int				height = contain.rows();
+	int				width = (int)contain.columns();
+	int				height = (int)contain.rows();
 };
 
 struct Measure
 {
 	void* skin;
 	void* rm;
-	std::wstring name;
-	std::wstring outputFile;
-	std::vector<ImgStruct *> imgList;
+	std::string outputA;
+	std::wstring outputW;
+	std::vector<ImgStruct> imgList;
 	Magick::Image finalImg;
 	BOOL isGIF = FALSE;
 	std::vector<Magick::Image> gifList;
@@ -38,11 +38,11 @@ struct Measure
 
 std::string ws2s(const std::wstring& wstr);
 std::wstring s2ws(const std::string& str);
-WSVector SeparateList(std::wstring rawString, wchar_t* separtor, int maxElement, wchar_t* defValue = L"0");
+WSVector SeparateList(std::wstring rawString, wchar_t* separator, int maxElement, wchar_t* defValue = L"0");
 Magick::Color GetColor(std::wstring rawString);
 std::wstring TrimString(std::wstring bloatedString);
 int NameToIndex(std::wstring name);
-BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring para);
+BOOL ParseEffect(void * rm, ImgStruct &img, std::wstring name, std::wstring para);
 void GetNamePara(std::wstring input, std::wstring& name, std::wstring& para);
 void error2pws(Magick::Exception error);
 void ParseExtend(void * rm, WSVector &parentVector, std::wstring parentName, BOOL isRecursion = FALSE);
@@ -75,6 +75,7 @@ namespace MathParser
 
 	bool IsDelimiter(WCHAR ch);
 
-	int ParseI(std::wstring input);
 	double ParseF(std::wstring input);
+	int ParseI(std::wstring input);
+	BOOL ParseB(std::wstring input);
 };

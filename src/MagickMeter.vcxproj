@@ -106,13 +106,15 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\Program Files\ImageMagick-7.0.7-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Program Files\ImageMagick-7.0.7-Q16\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v9.0\include\;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v9.0\include\CL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_Magick++_.lib;C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_MagickCore_.lib;C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_MagickWand_.lib;..\..\API\x64\Rainmeter.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_Magick++_.lib;C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_MagickCore_.lib;C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_MagickWand_.lib;..\..\API\x64\Rainmeter.lib;Shlwapi.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v9.0\lib\x64\OpenCL.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Program Files\ImageMagick-7.0.7-Q16;C:\Program Files\NVIDIA Corporation\OpenCL;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

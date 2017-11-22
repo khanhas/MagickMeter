@@ -1,25 +1,26 @@
 #include "MagickMeter.h"
 #include "..\..\API\RainmeterAPI.h"
+#include <CL/opencl.h>
 
 ImgType GetType(std::wstring input);
-BOOL CreateNew(ImgStruct * dst, WSVector setting, Measure * measure);
-BOOL CreateText(ImgStruct * dst, WSVector setting, Measure * measure);
-BOOL CreateShape(ImgStruct * dst, WSVector setting, ImgType shape, Measure * measure);
-BOOL CreateCombine(ImgStruct * dst, WSVector setting, Measure * measure);
-BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure);
+void ComposeFinalImage(Measure * measure);
+BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush = TRUE);
+BOOL CreateNew(ImgStruct &dst, WSVector &setting, Measure * measure);
+BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure);
+BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * measure);
+BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure);
+BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure);
 
 ImgType GetType(std::wstring input)
 {
-	LPCWSTR inPtr = input.c_str();
-
-	if (_wcsnicmp(inPtr, L"FILE", 4) == 0)				return NORMAL;
-	else if (_wcsnicmp(inPtr, L"ELLIPSE", 7) == 0)		return ELLIPSE;
-	else if (_wcsnicmp(inPtr, L"RECTANGLE", 9) == 0)	return RECTANGLE;
-	else if (_wcsnicmp(inPtr, L"COMBINE", 7) == 0)		return COMBINE;
-	else if (_wcsnicmp(inPtr, L"CLONE", 5) == 0)		return CLONE;
-	else if (_wcsnicmp(inPtr, L"TEXT", 4) == 0)			return TEXT;
-	else if (_wcsnicmp(inPtr, L"GRADIENT", 8) == 0)		return GRADIENT;
-	else												return NOTYPE;
+	if		(_wcsnicmp(input.c_str(), L"FILE", 4) == 0)			return NORMAL;
+	else if (_wcsnicmp(input.c_str(), L"TEXT", 4) == 0)			return TEXT;
+	else if (_wcsnicmp(input.c_str(), L"CLONE", 5) == 0)		return CLONE;
+	else if (_wcsnicmp(input.c_str(), L"ELLIPSE", 7) == 0)		return ELLIPSE;
+	else if (_wcsnicmp(input.c_str(), L"COMBINE", 7) == 0)		return COMBINE;
+	else if (_wcsnicmp(input.c_str(), L"GRADIENT", 8) == 0)		return GRADIENT;
+	else if (_wcsnicmp(input.c_str(), L"RECTANGLE", 9) == 0)	return RECTANGLE;
+	else														return NOTYPE;
 }
 
 PLUGIN_EXPORT void Initialize(void** data, void* rm)
@@ -27,10 +28,13 @@ PLUGIN_EXPORT void Initialize(void** data, void* rm)
 	Measure* measure = new Measure;
 	*data = measure;
 	measure->rm = rm;
-	measure->name = RmGetMeasureName(rm);
+	std::wstring mesName = RmGetMeasureName(rm);
 	measure->skin = RmGetSkin(rm);
 
 	Magick::InitializeMagick("\\");
+
+	if (Magick::EnableOpenCL())
+		RmLog(2, L"OpenCL is supported.");
 
 	std::wstring tempFolder = RmReplaceVariables(rm, L"%temp%");
 	std::wstring disName = RmGetSkinName(rm);
@@ -40,9 +44,11 @@ PLUGIN_EXPORT void Initialize(void** data, void* rm)
 		disName.replace(slashPos, 1, L"_");
 		slashPos = disName.find(L"\\", slashPos);
 	}
-	measure->outputFile = tempFolder + L"\\" + disName + L"_" + measure->name + L".bmp";
+	measure->outputW = tempFolder + L"\\" + disName + L"_" + mesName + L".bmp";
+	measure->outputA = ws2s(measure->outputW);
 	measure->finalImg.alpha(true);
 	measure->finalImg.backgroundColor(INVISIBLE);
+
 }
 
 PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
@@ -51,122 +57,135 @@ PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
 
 	std::wstring imgName = L"Image";
 	int inpCount = 1;
-	std::wstring imgInp = RmReadString(rm, L"Image", L"");
 
 	if (measure->finalImg.isValid())
-	{
 		measure->finalImg.erase();
-	}
 
 	measure->imgList.clear();
 	measure->imgList.shrink_to_fit();
 
-	while (!imgInp.empty())
+	while (true)
 	{
-		WSVector imgVec = SeparateList(imgInp, L"|", NULL);
-		if (imgVec.size() == 0) break;
-
-		ParseExtend(rm, imgVec, imgName);
-
-		ImgStruct * curImg = new ImgStruct;
-
-		curImg->contain.alpha(true);
-		curImg->contain.backgroundColor(INVISIBLE);
-
-		std::wstring name, parameter;
-		GetNamePara(imgVec[0], name, parameter);
-
-		ImgType type = GetType(name);
-
-		BOOL isValid = TRUE;
-
-		if (!parameter.empty())
-		{
-			imgVec[0] = parameter;
-			switch (type)
-			{
-			case NORMAL:
-				isValid = CreateNew(curImg, imgVec, measure);
-				break;
-			case COMBINE:
-				isValid = CreateCombine(curImg, imgVec, measure);
-				break;
-			case TEXT:
-				isValid = CreateText(curImg, imgVec, measure);
-				break;
-			case RECTANGLE:
-			case ELLIPSE:
-				isValid = CreateShape(curImg, imgVec, type, measure);
-				break;
-			case CLONE:
-			{
-				int index = NameToIndex(imgVec[0]);
-
-				if (index < measure->imgList.size() && index >= 0)
-					curImg->contain = measure->imgList[index]->contain;
-				else
-				{
-					RmLogF(rm, 2, L"%s is invalid Image to clone.", imgVec[0].c_str());
-					isValid = FALSE;
-					break;
-				}
-
-				imgVec.erase(imgVec.begin());
-
-				for (auto &settingIt : imgVec)
-				{
-					std::wstring name, parameter;
-					GetNamePara(settingIt, name, parameter);
-
-					if (!ParseEffect(rm, curImg->contain, name, parameter))
-					{
-						RmLogF(rm, 2, L"Effect %s %s is invalid.", name.c_str(), parameter.c_str());
-						isValid = FALSE;
-						break;
-					}
-				}
-				break;
-			}
-			case GRADIENT:
-				isValid = CreateGradient(curImg, imgVec, measure);
-				break;
-			}
-		}
-
-		if (isValid && curImg->contain.isValid())
-			measure->imgList.push_back(curImg);
-		else
-		{
-			RmLogF(rm, 2, L"%s is invalid. Check its modifiers and effects again.", imgName.c_str());
+		if (!GetImage(measure, imgName))
 			break;
-		}
-		
+
 		imgName = L"Image" + std::to_wstring(++inpCount);
-		imgInp = RmReadString(rm, imgName.c_str(), L"");
 	}
 
+	ComposeFinalImage(measure);
+}
+
+BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
+{
+	std::wstring rawSetting = RmReadString(measure->rm, imageName.c_str(), L"");
+	if (rawSetting.empty()) return FALSE;
+
+	WSVector imgVec = SeparateList(rawSetting, L"|", NULL);
+	if (imgVec.size() == 0) return FALSE;
+
+	ParseExtend(measure->rm, imgVec, imageName);
+
+	ImgStruct curImg;
+
+	curImg.contain.alpha(true);
+	curImg.contain.backgroundColor(INVISIBLE);
+
+	std::wstring name, parameter;
+	GetNamePara(imgVec[0], name, parameter);
+
+	ImgType type = GetType(name);
+
+	BOOL isValid = TRUE;
+
+	if (!parameter.empty())
+	{
+		imgVec[0] = parameter;
+		switch (type)
+		{
+		case NORMAL:
+			isValid = CreateNew(curImg, imgVec, measure);
+			break;
+		case COMBINE:
+			isValid = CreateCombine(curImg, imgVec, measure);
+			break;
+		case TEXT:
+			isValid = CreateText(curImg, imgVec, measure);
+			break;
+		case RECTANGLE:
+		case ELLIPSE:
+			isValid = CreateShape(curImg, imgVec, type, measure);
+			break;
+		case CLONE:
+		{
+			int index = NameToIndex(imgVec[0]);
+
+			if (index < measure->imgList.size() && index >= 0)
+				curImg.contain = measure->imgList[index].contain;
+			else
+			{
+				RmLogF(measure->rm, 2, L"%s is invalid Image to clone.", imgVec[0].c_str());
+				isValid = FALSE;
+				break;
+			}
+
+			imgVec.erase(imgVec.begin());
+			isValid = TRUE;
+			break;
+		}
+		case GRADIENT:
+			isValid = CreateGradient(curImg, imgVec, measure);
+			break;
+		}
+	}
+
+	if (isValid && curImg.contain.isValid())
+	{
+
+		for (auto &settingIt : imgVec)
+		{
+			std::wstring name, parameter;
+			GetNamePara(settingIt, name, parameter);
+
+			if (!ParseEffect(measure->rm, curImg, name, parameter))
+				return FALSE;
+		}
+
+		if (isPush)
+			measure->imgList.push_back(curImg);
+		else
+			measure->imgList[NameToIndex(imageName)].contain = curImg.contain;
+	}
+	else
+	{
+		RmLogF(measure->rm, 2, L"%s is invalid. Check its modifiers and effects again.", imageName.c_str());
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+void ComposeFinalImage(Measure * measure)
+{
 	for (int i = 0; i < measure->imgList.size(); i++)
 	{
-		if (measure->imgList[i]->isDelete) continue;
-
+		if (measure->imgList[i].isDelete) continue;
+		RmLogF(measure->rm, 2, L"%d", i);
 		//Extend main image size
 		size_t newW = measure->finalImg.columns();
-		if (measure->imgList[i]->contain.columns() > newW)
-			newW = measure->imgList[i]->contain.columns();
+		if (measure->imgList[i].contain.columns() > newW)
+			newW = measure->imgList[i].contain.columns();
 
 		size_t newH = measure->finalImg.rows();
-		if (measure->imgList[i]->contain.rows() > newH)
-			newH = measure->imgList[i]->contain.rows();
+		if (measure->imgList[i].contain.rows() > newH)
+			newH = measure->imgList[i].contain.rows();
 
 		measure->finalImg.size(Magick::Geometry(newW, newH));
 
-		measure->finalImg.composite(measure->imgList[i]->contain, 0, 0, MagickCore::OverCompositeOp);
+		measure->finalImg.composite(measure->imgList[i].contain, 0, 0, MagickCore::OverCompositeOp);
 	}
 
-	if (measure->finalImg.isValid()) measure->finalImg.write(ws2s(measure->outputFile));
+	if (measure->finalImg.isValid()) measure->finalImg.write(measure->outputA);
 }
-
-
 
 PLUGIN_EXPORT double Update(void* data)
 {
@@ -190,7 +209,7 @@ PLUGIN_EXPORT LPCWSTR GetString(void* data)
 {
 	Measure* measure = (Measure*)data;
 	if (measure->finalImg.isValid())
-		return measure->outputFile.c_str();
+		return measure->outputW.c_str();
 	else
 		return nullptr;
 }
@@ -199,8 +218,25 @@ PLUGIN_EXPORT void ExecuteBang(void* data, LPCWSTR args)
 {
 	Measure* measure = (Measure*)data;
 
+
 	if (_wcsicmp(args, L"Update") == 0)
 		Reload(data, measure->rm, 0);
+	else if (_wcsnicmp(args, L"Reload", 6) == 0)
+	{
+		std::wstring list = args;
+		list = list.substr(list.find_first_not_of(L" \t\r\n", 6));
+		WSVector imageList = SeparateList(list, L",", NULL);
+		for (auto &image : imageList)
+		{
+			int index = NameToIndex(image);
+			if (index >= 0 && index < measure->imgList.size())
+			{
+				measure->imgList[index].contain.erase();
+				GetImage(measure, image, FALSE);
+			}
+		}
+		ComposeFinalImage(measure);
+	}
 }
 
 PLUGIN_EXPORT void Finalize(void* data)
@@ -244,40 +280,39 @@ std::wstring TrimString(std::wstring bloatedString)
 		trimmedString.erase(trimmedString.find_last_not_of(L" \t\r\n") + 1);
 		return trimmedString;
 	}
-	return L""; 
+	return L"";
 }
 
-WSVector SeparateList(std::wstring rawString, wchar_t* separtor, int maxElement, wchar_t* defValue)
+WSVector SeparateList(std::wstring rawString, wchar_t* separator, int maxElement, wchar_t* defValue)
 {
 	WSVector vectorList;
 
 	if (rawString.empty())
 		return vectorList;
 
-	std::wstring tempList = rawString;
 	size_t start = 0;
-	size_t end = tempList.find(separtor, 0);
+	size_t end = rawString.find(separator);
 
 	while (end != std::wstring::npos)
 	{
-		std::wstring element = tempList.substr(start, end - start);
+		std::wstring element = rawString.substr(start, end - start);
+		element = TrimString(element);
 
 		if (!element.empty())
 		{
-			element = TrimString(element);
 			vectorList.push_back(element);
 		}
 		start = end + 1;
-		end = tempList.find(separtor, start);
+		end = rawString.find(separator, start);
 	}
 
-	if (start < tempList.length())
+	if (start < rawString.length())
 	{
-		std::wstring element = tempList.substr(start, tempList.length() - start);
+		std::wstring element = rawString.substr(start, rawString.length() - start);
+		element = TrimString(element);
 
 		if (!element.empty())
 		{
-			element = TrimString(element);
 			vectorList.push_back(element);
 		}
 	}
@@ -305,7 +340,7 @@ Magick::Color GetColor(std::wstring rawString)
 
 		if (end != std::wstring::npos)
 		{
-			rawString = rawString.substr(4, end - 4); 
+			rawString = rawString.substr(4, end - 4);
 			WSVector hsl = SeparateList(rawString, L",", NULL);
 			if (hsl.size() >= 3)
 			{
@@ -372,7 +407,7 @@ void error2pws(Magick::Exception error)
 
 void ParseExtend(void * rm, WSVector &parentVector, std::wstring parentName, BOOL isRecursion)
 {
-	for (int k = parentVector.size() - 1 ; k >=  1 - isRecursion; k--) // Avoid first iteration
+	for (int k = (int)parentVector.size() - 1 ; k >=  1 - isRecursion; k--) // Avoid first iteration
 	{
 		int insertIndex = k + 1;
 		if (_wcsnicmp(parentVector[k].c_str(), L"EXTEND", 6) == 0)
@@ -400,7 +435,7 @@ void ParseExtend(void * rm, WSVector &parentVector, std::wstring parentName, BOO
 	}
 }
 
-BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring para)
+BOOL ParseEffect(void * rm, ImgStruct &image, std::wstring name, std::wstring para)
 {
 	LPCWSTR effect = name.c_str();
 	LPCWSTR parameter = para.c_str();
@@ -412,18 +447,18 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 			size_t x = MathParser::ParseI(offsetXY[0]);
 			size_t y = MathParser::ParseI(offsetXY[1]);
 			Magick::Image tempImg = Magick::Image(
-				Magick::Geometry(img.columns() + x, img.rows() + y),
+				Magick::Geometry(image.contain.columns() + x, image.contain.rows() + y),
 				INVISIBLE
 			);
 
-			tempImg.composite(img, x, y, MagickCore::OverCompositeOp);
+			tempImg.composite(image.contain, x, y, MagickCore::OverCompositeOp);
 
-			img = tempImg;
+			image.contain = tempImg;
 		}
 		else if (_wcsicmp(effect, L"ADAPTIVEBLUR") == 0)
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
-			img.adaptiveBlur(
+			image.contain.adaptiveBlur(
 				MathParser::ParseF(valList[0]),
 				MathParser::ParseF(valList[1])
 			);
@@ -431,7 +466,7 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 		else if (_wcsicmp(effect, L"BLUR") == 0)
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
-			img.blur(
+			image.contain.blur(
 				MathParser::ParseF(valList[0]),
 				MathParser::ParseF(valList[1])
 			);
@@ -439,7 +474,7 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 		else if (_wcsicmp(effect, L"GAUSSIANBLUR") == 0)
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
-			img.gaussianBlur(
+			image.contain.gaussianBlur(
 				MathParser::ParseF(valList[0]),
 				MathParser::ParseF(valList[1])
 			);
@@ -447,7 +482,7 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 		else if (_wcsicmp(effect, L"MOTIONBLUR") == 0)
 		{
 			WSVector valList = SeparateList(parameter, L",", 3);
-			img.motionBlur(
+			image.contain.motionBlur(
 				MathParser::ParseF(valList[0]),
 				MathParser::ParseF(valList[1]),
 				MathParser::ParseF(valList[2])
@@ -456,8 +491,8 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 		else if (_wcsicmp(effect, L"NOISE") == 0)
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
-			img.attenuate(MathParser::ParseF(valList[0]));
-			img.addNoise((Magick::NoiseType)MathParser::ParseI(valList[0]));
+			image.contain.attenuate(MathParser::ParseF(valList[0]));
+			image.contain.addNoise((Magick::NoiseType)MathParser::ParseI(valList[0]));
 		}
 		else if (_wcsicmp(effect, L"SHADOW") == 0)
 		{
@@ -468,7 +503,7 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 			int offsetX = MathParser::ParseI(valList[2]);
 			int offsetY = MathParser::ParseI(valList[3]);
 
-			Magick::Image tempShadow = img;
+			Magick::Image tempShadow = image.contain;
 
 			if (!dropShadow[1].empty())
 				tempShadow.backgroundColor(GetColor(dropShadow[1].c_str()));
@@ -482,61 +517,46 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 				0, 0
 			);
 
-			img.extent(Magick::Geometry(
-				tempShadow.columns() + offsetX + sigma,
-				tempShadow.rows() + offsetY + sigma
+			image.contain.extent(Magick::Geometry(
+				(int)tempShadow.columns() + offsetX + (int)sigma,
+				(int)tempShadow.rows() + offsetY + (int)sigma
 			), INVISIBLE);
-			
+
 			if (MathParser::ParseI(valList[4]) == 1)
 			{
-				img.erase();
-				img.composite(
+				image.contain.erase();
+				image.contain.composite(
 					tempShadow,
-					offsetX - sigma * 2,
-					offsetY - sigma * 2,
+					(ssize_t)(offsetX - sigma * 2),
+					(ssize_t)(offsetY - sigma * 2),
 					MagickCore::CopyCompositeOp
 				);
 			}
 			else
-				img.composite(
+				image.contain.composite(
 					tempShadow,
-					offsetX - sigma * 2,
-					offsetY - sigma * 2,
+					(ssize_t)(offsetX - sigma * 2),
+					(ssize_t)(offsetY - sigma * 2),
 					MagickCore::DstOverCompositeOp
 				);
-				
+
 		}
-		else if (_wcsicmp(effect, L"PERSPECTIVE") == 0)
+		else if (_wcsicmp(effect, L"DISTORT") == 0)
 		{
-			WSVector valList = SeparateList(parameter, L",", NULL);
-			if (valList.size() < 16)
+			WSVector valList = SeparateList(parameter, L";", 2);
+			WSVector rawList = SeparateList(valList[1], L",", NULL);
+
+			std::vector<double> doubleList;
+			for (auto &oneDouble : rawList)
 			{
-				RmLog(2, L"Perspective: Not enough parameter. Require 16 parameters as 4 control points.");
-				return FALSE;
+				doubleList.push_back(MathParser::ParseF(oneDouble));
 			}
-			
-			const double argsPer[16] = {
-				MathParser::ParseF(valList[0]),
-				MathParser::ParseF(valList[1]),
-				MathParser::ParseF(valList[2]),
-				MathParser::ParseF(valList[3]),
-				MathParser::ParseF(valList[4]),
-				MathParser::ParseF(valList[5]),
-				MathParser::ParseF(valList[6]),
-				MathParser::ParseF(valList[7]),
-				MathParser::ParseF(valList[8]),
-				MathParser::ParseF(valList[9]),
-				MathParser::ParseF(valList[10]),
-				MathParser::ParseF(valList[11]),
-				MathParser::ParseF(valList[12]),
-				MathParser::ParseF(valList[13]),
-				MathParser::ParseF(valList[14]),
-				MathParser::ParseF(valList[15])
-			};
-			img.distort(
-				MagickCore::PerspectiveDistortion,
-				16,
-				argsPer,
+
+			double * doubleArray = &doubleList[0];
+			image.contain.distort(
+				(MagickCore::DistortMethod)MathParser::ParseI(valList[0]),
+				doubleList.size(),
+				doubleArray,
 				false
 			);
 		}
@@ -544,7 +564,7 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 		{
 			WSVector valList = SeparateList(parameter, L",", 3);
 
-			img.shade(
+			image.contain.shade(
 				MathParser::ParseI(valList[0]),
 				MathParser::ParseI(valList[1]),
 				MathParser::ParseI(valList[2]) == 1
@@ -553,7 +573,7 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 		else if (_wcsicmp(effect, L"OILPAINT") == 0)
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
-			img.oilPaint(
+			image.contain.oilPaint(
 				MathParser::ParseI(valList[0]),
 				MathParser::ParseI(valList[1])
 			);
@@ -562,7 +582,7 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
 
-			img.resize(Magick::Geometry(
+			image.contain.resize(Magick::Geometry(
 				MathParser::ParseI(valList[0]),
 				MathParser::ParseI(valList[1])
 			));
@@ -571,7 +591,7 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
 
-			img.adaptiveResize(Magick::Geometry(
+			image.contain.adaptiveResize(Magick::Geometry(
 				MathParser::ParseI(valList[0]),
 				MathParser::ParseI(valList[1])
 			));
@@ -594,21 +614,20 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 				newSize.height(MathParser::ParseI(scale[1]));
 			}
 
-			img.scale(newSize);
+			image.contain.scale(newSize);
 		}
 		else if (_wcsicmp(effect, L"SAMPLE") == 0)
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
 
-			img.sample(Magick::Geometry(
+			image.contain.sample(Magick::Geometry(
 				MathParser::ParseI(valList[0]),
 				MathParser::ParseI(valList[1])
 			));
 		}
 		else if (_wcsicmp(effect, L"RESAMPLE") == 0)
 		{
-			double val = MathParser::ParseF(parameter);
-			img.resample(val);
+			image.contain.resample(MathParser::ParseF(parameter));
 		}
 		else if (_wcsicmp(effect, L"CROP") == 0)
 		{
@@ -634,18 +653,18 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 			switch (g)
 			{
 			case 2: //TOP RIGHT
-				x += img.columns();
+				x += (int)image.contain.columns();
 				break;
 			case 3: //BOTTOM RIGHT
-				x += img.columns();
-				y += img.rows();
+				x += (int)image.contain.columns();
+				y += (int)image.contain.rows();
 				break;
 			case 4: //BOTTOM LEFT
-				y += img.rows();
+				y += (int)image.contain.rows();
 				break;
 			case 5: //CENTER
-				x += (img.columns() / 2);
-				y += (img.rows() / 2);
+				x += (int)(image.contain.columns() / 2);
+				y += (int)(image.contain.rows() / 2);
 				break;
 			}
 
@@ -662,80 +681,80 @@ BOOL ParseEffect(void * rm, Magick::Image &img, std::wstring name, std::wstring 
 			}
 
 			//Chop off size when selected region is out of origin image
-			if ((size_t)(w + x) > img.columns())
-				w = img.columns() - x;
+			if ((size_t)(w + x) > image.contain.columns())
+				w = (int)image.contain.columns() - x;
 
-			if ((size_t)(h + y) > img.rows())
-				h = img.rows() - y;
+			if ((size_t)(h + y) > image.contain.rows())
+				h = (int)image.contain.rows() - y;
 
-			img.crop(Magick::Geometry(w, h, x, y));
+			image.contain.crop(Magick::Geometry(w, h, x, y));
 		}
 		else if (_wcsicmp(effect, L"ROTATIONALBLUR") == 0)
 		{
-			double val = MathParser::ParseF(parameter);
-			img.rotationalBlur(val);
+			image.contain.rotationalBlur(MathParser::ParseF(parameter));
 		}
 		else if (_wcsicmp(effect, L"IMPLODE") == 0)
 		{
-			double val = MathParser::ParseF(parameter);
-			img.implode(val);
+			image.contain.implode(MathParser::ParseF(parameter));
 		}
 		else if (_wcsicmp(effect, L"SPREAD") == 0)
 		{
-			double val = MathParser::ParseF(parameter);
-			img.spread(val);
+			image.contain.spread(MathParser::ParseF(parameter));
 		}
 		else if (_wcsicmp(effect, L"SWIRL") == 0)
 		{
-			double val = MathParser::ParseF(parameter);
-			img.swirl(val);
+			image.contain.swirl(MathParser::ParseF(parameter));
 		}
 		else if (_wcsicmp(effect, L"MEDIANFILTER") == 0)
 		{
-			double val = MathParser::ParseF(parameter);
-			img.medianFilter(val);
-
+			image.contain.medianFilter(MathParser::ParseF(parameter));
 		}
 		else if (_wcsicmp(effect, L"EQUALIZE") == 0)
 		{
-			img.equalize();
+			image.contain.equalize();
 		}
 		else if (_wcsicmp(effect, L"ENHANCE") == 0)
 		{
-			img.enhance();
+			image.contain.enhance();
 		}
 		else if (_wcsicmp(effect, L"DESPECKLE") == 0)
 		{
-			img.despeckle();
+			image.contain.despeckle();
 		}
 		else if (_wcsicmp(effect, L"REDUCENOISE") == 0)
 		{
-			img.reduceNoise();
+			image.contain.reduceNoise();
 		}
 		else if (_wcsicmp(effect, L"TRANSPOSE") == 0)
 		{
-			img.transpose();
+			image.contain.transpose();
 		}
 		else if (_wcsicmp(effect, L"TRANSVERSE") == 0)
 		{
-			img.transverse();
+			image.contain.transverse();
 		}
 		else if (_wcsicmp(effect, L"FLIP") == 0)
 		{
-			img.flip();
+			image.contain.flip();
 		}
 		else if (_wcsicmp(effect, L"FLOP") == 0)
 		{
-			img.flop();
+			image.contain.flop();
 		}
 		else if (_wcsicmp(effect, L"MAGNIFY") == 0)
 		{
-			img.magnify();
+			image.contain.magnify();
 		}
 		else if (_wcsicmp(effect, L"MINIFY") == 0)
 		{
-			img.minify();
+			image.contain.minify();
 		}
+		else if (_wcsicmp(effect, L"IGNORE") == 0)
+		{
+			image.isDelete = TRUE;
+		}
+		effect = nullptr;
+		parameter = nullptr;
 		return TRUE;
 	}
 	catch (Magick::Exception &error_)

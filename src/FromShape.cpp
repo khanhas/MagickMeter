@@ -21,7 +21,7 @@ struct ShapeRectangle
 	auto CreateRound(void)	{ return Magick::DrawableRoundRectangle(x, y, x + w, y + h, cornerX, cornerY == 0 ? cornerX : cornerY); }
 };
 
-BOOL CreateShape(ImgStruct * dst, WSVector setting, ImgType shape, Measure * measure)
+BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * measure)
 {
 	std::wstring parameter = setting[0];
 	setting.erase(setting.begin());
@@ -152,41 +152,32 @@ BOOL CreateShape(ImgStruct * dst, WSVector setting, ImgType shape, Measure * mea
 
 	try
 	{
-		dst->contain = Magick::Image(Magick::Geometry(width, height), INVISIBLE);
+		dst.contain.size(Magick::Geometry(width, height));
 		drawList.push_back(mainShape);
 		if (strokeWidth != 0 && strokeAlign != 0)
 		{
+			Magick::Image temp = dst.contain;
 			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth * 2));
-			dst->contain.draw(drawList);
+			dst.contain.draw(drawList);
+
 			drawList.push_back(Magick::DrawableStrokeWidth(0));
-			Magick::Image temp = Magick::Image(Magick::Geometry(width, height), INVISIBLE);
 			temp.draw(drawList);
 			if (strokeAlign == 1)
 			{
-				dst->contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
+				dst.contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
 			}
 			else if (strokeAlign == 2)
 			{
-				dst->contain.composite(temp, 0, 0, MagickCore::CopyAlphaCompositeOp);
+				dst.contain.composite(temp, 0, 0, MagickCore::CopyAlphaCompositeOp);
 			}
 		}
 		else
-			dst->contain.draw(drawList);
+			dst.contain.draw(drawList);
 	}
 	catch (Magick::Exception &error_)
 	{
 		error2pws(error_);
 		return FALSE;
-	}
-
-	for (auto &settingIt : setting)
-	{
-		if (settingIt.empty()) continue;
-		std::wstring name, parameter;
-		GetNamePara(settingIt, name, parameter);
-
-		if (!ParseEffect(measure->rm, dst->contain, name, parameter))
-			return FALSE;
 	}
 
 	return TRUE;

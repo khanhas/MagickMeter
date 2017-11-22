@@ -2,9 +2,8 @@
 
 MagickCore::PixelInfo GetPixelInfo(std::wstring rawString);
 
-BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure)
+BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
 {
-	dst->contain = Magick::Image(Magick::Geometry(600,600), INVISIBLE);
 
 	MagickCore::GradientType type;
 	if (_wcsicmp(setting[0].c_str(), L"LINEAR") == 0)
@@ -13,7 +12,7 @@ BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure)
 		type = MagickCore::RadialGradient;
 	else
 	{
-		RmLogF(measure->rm, 2, L"%s is invalid GradientType.", setting[0].c_str());
+		RmLogF(measure->rm, 2, L"%s is invalid Gradient type.", setting[0].c_str());
 		return FALSE;
 	}
 	setting.erase(setting.begin());
@@ -21,6 +20,10 @@ BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure)
 
 	MagickCore::StopInfo * stopColors = { 0 };
 	size_t totalColor = 0;
+
+	int width = 600;
+	int height = 600;
+
 	for (int i = 0; i < setting.size(); i++)
 	{
 		std::wstring tempName, tempParameter;
@@ -30,7 +33,26 @@ BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure)
 
 		BOOL isSetting = FALSE;
 
-		if (_wcsicmp(name, L"SPREADMETHOD") == 0)
+		if (_wcsicmp(name, L"CANVAS") == 0)
+		{
+			WSVector valList = SeparateList(parameter, L",", 2);
+			int tempW = MathParser::ParseI(valList[0]);
+			int tempH = MathParser::ParseI(valList[1]);
+
+			if (tempW <= 0 || tempH <= 0)
+			{
+				width = 600;
+				height = 600;
+				RmLog(2, L"Invalid Width or Height value. Default canvas 600,600 is used.");
+			}
+			else
+			{
+				width = tempW;
+				height = tempH;
+			}
+			isSetting = TRUE;
+		}
+		else if (_wcsicmp(name, L"SPREADMETHOD") == 0)
 		{
 			int val = MathParser::ParseI(parameter);
 			if (val >= 1 && val <= 3)
@@ -40,12 +62,20 @@ BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure)
 				spread = MagickCore::PadSpread;
 				RmLogF(measure->rm, 2, L"%s is invalid SpreadMethod. Pad Spread is applied", parameter);
 			}
+			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"GRADIENTANGLE") == 0)
 		{
 			double val = MathParser::ParseF(parameter);
 			//https://www.imagemagick.org/api/MagickCore/paint_8c_source.html#l00537
-			MagickCore::SetImageArtifact(dst->contain.image(), "gradient:angle", std::to_string(val).c_str());
+			MagickCore::SetImageArtifact(dst.contain.image(), "gradient:angle", std::to_string(val).c_str());
+			isSetting = TRUE;
+		}
+		else if (_wcsicmp(name, L"GRADIENTEXTENT") == 0)
+		{
+			//https://www.imagemagick.org/api/MagickCore/paint_8c_source.html#l00560
+			MagickCore::SetImageArtifact(dst.contain.image(), "gradient:extent", ws2s(parameter).c_str()); 
+			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"GRADIENTRADII") == 0)
 		{
@@ -54,7 +84,8 @@ BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure)
 			int radiiY = MathParser::ParseI(valList[1]);
 			std::string radii = std::to_string(radiiX) + "," + std::to_string(radiiY);
 			//https://www.imagemagick.org/api/MagickCore/paint_8c_source.html#l00593
-			MagickCore::SetImageArtifact(dst->contain.image(), "gradient:radii", radii.c_str());
+			MagickCore::SetImageArtifact(dst.contain.image(), "gradient:radii", radii.c_str());
+			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"GRADIENTVECTOR") == 0)
 		{
@@ -65,7 +96,8 @@ BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure)
 			int Y2 = MathParser::ParseI(valList[3]);
 			std::string gradVector = std::to_string(X1) + "," + std::to_string(Y1) + "," + std::to_string(X2) + "," + std::to_string(Y2);
 			//https://www.imagemagick.org/api/MagickCore/paint_8c_source.html#l00522
-			MagickCore::SetImageArtifact(dst->contain.image(), "gradient:vector", gradVector.c_str());
+			MagickCore::SetImageArtifact(dst.contain.image(), "gradient:vector", gradVector.c_str());
+			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"COLORLIST") == 0)
 		{
@@ -93,16 +125,32 @@ BOOL CreateGradient(ImgStruct * dst, WSVector setting, Measure * measure)
 				RmLogF(measure->rm, 2, L"%s is invalid ColorList.", parameter);
 				return FALSE;
 			}
+			isSetting = TRUE;
 		}
-		setting[i] = L"";
+
+		if (isSetting)
+			setting[i] = L"";
 	}
+
+
 	if (totalColor != 0)
-		MagickCore::GradientImage(dst->contain.image(), type, spread, stopColors, totalColor, nullptr);
+	{
+		dst.contain = Magick::Image(Magick::Geometry(width, height), INVISIBLE);
+		MagickCore::MagickBooleanType drawSucceeced = MagickCore::GradientImage(dst.contain.image(), type, spread, stopColors, totalColor, nullptr);
+		stopColors = nullptr;
+		if (drawSucceeced == MagickCore::MagickBooleanType::MagickFalse)
+		{
+			RmLog(2, L"Could not draw Gradient");
+			return FALSE;
+		}
+
+	}
 	else
 	{
-		RmLog(2, L"No valid color was found. Check ColorList again.");
+		RmLog(measure->rm, 2, L"No valid color was found. Check ColorList again.");
 		return FALSE;
 	}
+
 	return TRUE;
 }
 

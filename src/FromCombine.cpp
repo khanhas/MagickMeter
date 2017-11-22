@@ -1,13 +1,14 @@
 #include "MagickMeter.h"
 
-BOOL CreateCombine(ImgStruct * dst, WSVector setting, Measure * measure)
+BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure)
 {
+	RmLog(2, L"com");
 	std::wstring baseImg = setting[0];
 	int baseIndex = NameToIndex(baseImg);
 	if (baseIndex != -1 && baseIndex < measure->imgList.size())
 	{
-		dst->contain = measure->imgList[baseIndex]->contain;
-		measure->imgList[baseIndex]->isDelete = TRUE;
+		dst.contain = measure->imgList[baseIndex].contain;
+		measure->imgList[baseIndex].isDelete = TRUE;
 	}
 	else
 	{
@@ -309,19 +310,19 @@ BOOL CreateCombine(ImgStruct * dst, WSVector setting, Measure * measure)
 				compOp = MagickCore::XorCompositeOp;
 			}
 
-			setting[i] = L"";
 
 			try
 			{
 				if (compOp != MagickCore::UndefinedCompositeOp)
 				{
-					measure->imgList[index]->isDelete = TRUE;
+					setting[i] = L"";
+					measure->imgList[index].isDelete = TRUE;
 
 					//Extend main image size
-					if (dst->contain.size() < measure->imgList[index]->contain.size())
-						dst->contain.size(measure->imgList[index]->contain.size());
+					if (dst.contain.size() < measure->imgList[index].contain.size())
+						dst.contain.size(measure->imgList[index].contain.size());
 
-					dst->contain.composite(measure->imgList[index]->contain, 0, 0, compOp);
+					dst.contain.composite(measure->imgList[index].contain, 0, 0, compOp);
 				}
 
 			}
@@ -331,16 +332,6 @@ BOOL CreateCombine(ImgStruct * dst, WSVector setting, Measure * measure)
 				return FALSE;
 			}
 
-		}
-
-		for (auto &settingIt : setting)
-		{
-			if (settingIt.empty()) continue;
-			std::wstring name, parameter;
-			GetNamePara(settingIt, name, parameter);
-
-			if (!ParseEffect(measure->rm, dst->contain, name, parameter))
-				return FALSE;
 		}
 	}
 	return TRUE;

@@ -290,6 +290,12 @@ namespace MathParser {
 		return (int)output;
 	}
 
+	BOOL ParseB(std::wstring input)
+	{
+		int num = ParseI(input);
+		return num == 1;
+	}
+
 	const WCHAR* Parse(
 		const WCHAR* formula, double* result, GetValueFunc getValue, void* getValueContext)
 	{

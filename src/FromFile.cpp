@@ -1,11 +1,11 @@
 #include "MagickMeter.h"
 #include <filesystem>
 
-BOOL CreateNew(ImgStruct * dst, WSVector setting, Measure * measure)
+BOOL CreateNew(ImgStruct &dst, WSVector &setting, Measure * measure)
 {
 	/*if (measure->isGIF)
 	{
-		dst->contain = measure->gifList[measure->GIFSeq];
+		dst.contain = measure->gifList[measure->GIFSeq];
 		goto AddEffect;
 	}*/
 
@@ -27,9 +27,8 @@ BOOL CreateNew(ImgStruct * dst, WSVector setting, Measure * measure)
 			}
 			targetFile = "screenshot:";
 			size_t monitorFlag = baseFile.find(L"@", 10);
-			if (monitorFlag != std::wstring::npos && monitorFlag + 1 != baseFile.length())
+			if (monitorFlag != std::wstring::npos && (monitorFlag + 1) != baseFile.length())
 				targetFile += "[" + std::to_string(MathParser::ParseI(baseFile.substr(11))) + "]";
-			RmLog(2, s2ws(targetFile).c_str());
 		}
 		else //A FILE PATH
 		{
@@ -56,15 +55,15 @@ BOOL CreateNew(ImgStruct * dst, WSVector setting, Measure * measure)
 					int width  = MathParser::ParseI(imgSize[0]);
 					int height = MathParser::ParseI(imgSize[1]);
 
-					if (!(width > 0 && height > 0))
+					if (width <= 0 && height <= 0)
 					{
 						RmLogF(measure->rm, 2, L"%s: Invalid Canvas width or height values. Read image at normal size.", baseFile);
 						isDefinedSize = FALSE;
 					}
 					else
 					{
-						defineSize.width(width);
-						defineSize.height(height);
+						if (width > 0) defineSize.width(width);
+						if (height > 0) defineSize.height(height);
 						int resizeType = MathParser::ParseI(imgSize[2]);
 						switch (resizeType)
 						{
@@ -93,29 +92,27 @@ BOOL CreateNew(ImgStruct * dst, WSVector setting, Measure * measure)
 			}
 		}
 
-		//Safety net for invalid file path to prevent crashing.
-		dst->contain.ping(targetFile);
 
 		if (isSS) RmExecute(measure->skin, L"!SetTransparency 0");
 
 		if (isDefinedSize)
 		{
 			//TODO: CRASH!
-			dst->contain.read(defineSize, targetFile); //Why it just works with SVG?
-			dst->contain.resize(defineSize);
+			dst.contain.read(defineSize, targetFile); //Why it just works with SVG?
+			dst.contain.resize(defineSize);
 		}
 		else
 		{
-			dst->contain.read(targetFile);
+			dst.contain.read(targetFile);
 		}
 		
 		if (isSS) RmExecute(measure->skin, L"!SetTransparency 255");
 
-		if (!dst->contain.isValid()) return FALSE;
+		if (!dst.contain.isValid()) return FALSE;
 
-		dst->contain.strip();
+		dst.contain.strip();
 
-		/*LPCWSTR fileExt = s2ws(dst->contain.magick()).c_str();
+		/*LPCWSTR fileExt = s2ws(dst.contain.magick()).c_str();
 		RmLog(2, fileExt);
 		if (_wcsicmp(fileExt, L"GIF") == 0 ||
 			_wcsicmp(fileExt, L"MP4") == 0 ||
@@ -131,7 +128,7 @@ BOOL CreateNew(ImgStruct * dst, WSVector setting, Measure * measure)
 					Magick::resizeImage(Magick::Geometry(width, height))
 				);
 			}
-			dst->contain = measure->gifList[0];
+			dst.contain = measure->gifList[0];
 			measure->isGIF = TRUE;
 		}*/
 	}
@@ -141,14 +138,5 @@ BOOL CreateNew(ImgStruct * dst, WSVector setting, Measure * measure)
 		return FALSE;
 	}
 
-	//AddEffect:
-	for (auto &settingIt : setting)
-	{
-		std::wstring name, parameter;
-		GetNamePara(settingIt, name, parameter);
-
-		if (!ParseEffect(measure->rm, dst->contain, name, parameter))
-			return FALSE;
-	}
 	return TRUE;
 }

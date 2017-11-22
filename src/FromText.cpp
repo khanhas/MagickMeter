@@ -1,7 +1,7 @@
 #include "MagickMeter.h"
 #include <filesystem>
 
-BOOL CreateText(ImgStruct * dst, WSVector setting, Measure * measure)
+BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 {
 	std::wstring text = setting[0];
 
@@ -257,20 +257,20 @@ BOOL CreateText(ImgStruct * dst, WSVector setting, Measure * measure)
 
 	try
 	{
-		dst->contain = Magick::Image(Magick::Geometry(width, height), Magick::Color("transparent"));
+		dst.contain = Magick::Image(Magick::Geometry(width, height), Magick::Color("transparent"));
 		if (strokeWidth == 0)
 		{
 			drawList.push_back(Magick::DrawableStrokeColor(Magick::Color("transparent")));
-			dst->contain.draw(drawList);
+			dst.contain.draw(drawList);
 		}
 		else if (strokeWidth != 0 && strokeAlign != 0)
 		{
-			Magick::Image temp = dst->contain;
+			Magick::Image temp = dst.contain;
 			std::vector<Magick::Drawable> tempList = drawList;
 
 			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth * 2));
 			drawList.push_back(Magick::DrawableStrokeColor(strokeColor));
-			dst->contain.draw(drawList);
+			dst.contain.draw(drawList);
 
 			tempList.push_back(Magick::DrawableStrokeWidth(0));
 			tempList.push_back(Magick::DrawableStrokeColor(Magick::Color("transparent")));
@@ -278,15 +278,15 @@ BOOL CreateText(ImgStruct * dst, WSVector setting, Measure * measure)
 			tempList.clear();
 
 			if (strokeAlign == 1)
-				dst->contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
+				dst.contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
 			else if (strokeAlign == 2)
-				dst->contain.composite(temp, 0, 0, MagickCore::CopyAlphaCompositeOp);
+				dst.contain.composite(temp, 0, 0, MagickCore::CopyAlphaCompositeOp);
 		}
 		else
 		{
 			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth));
 			drawList.push_back(Magick::DrawableStrokeColor(strokeColor));
-			dst->contain.draw(drawList);
+			dst.contain.draw(drawList);
 		}
 
 		drawList.clear();
@@ -297,14 +297,5 @@ BOOL CreateText(ImgStruct * dst, WSVector setting, Measure * measure)
 		return FALSE;
 	}
 
-	for (auto &settingIt : setting)
-	{
-		if (settingIt.empty()) continue;
-		std::wstring name, parameter;
-		GetNamePara(settingIt, name, parameter);
-
-		if (!ParseEffect(measure->rm, dst->contain, name, parameter))
-			return FALSE;
-	}
 	return TRUE;
 }

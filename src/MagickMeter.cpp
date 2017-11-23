@@ -1,6 +1,5 @@
 #include "MagickMeter.h"
 #include "..\..\API\RainmeterAPI.h"
-#include <CL/opencl.h>
 
 ImgType GetType(std::wstring input);
 void ComposeFinalImage(Measure * measure);
@@ -87,6 +86,8 @@ BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
 
 	ImgStruct curImg;
 
+	if (curImg.contain.isValid()) curImg.contain.erase();
+
 	curImg.contain.alpha(true);
 	curImg.contain.backgroundColor(INVISIBLE);
 
@@ -154,6 +155,8 @@ BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
 			measure->imgList.push_back(curImg);
 		else
 			measure->imgList[NameToIndex(imageName)].contain = curImg.contain;
+
+		
 	}
 	else
 	{
@@ -166,10 +169,12 @@ BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
 
 void ComposeFinalImage(Measure * measure)
 {
+	if (measure->finalImg.isValid())
+		measure->finalImg.erase();
+
 	for (int i = 0; i < measure->imgList.size(); i++)
 	{
-		if (measure->imgList[i].isDelete) continue;
-		RmLogF(measure->rm, 2, L"%d", i);
+		if (measure->imgList[i].isDelete || measure->imgList[i].isIgnore) continue;
 		//Extend main image size
 		size_t newW = measure->finalImg.columns();
 		if (measure->imgList[i].contain.columns() > newW)
@@ -190,7 +195,7 @@ void ComposeFinalImage(Measure * measure)
 PLUGIN_EXPORT double Update(void* data)
 {
 	Measure* measure = (Measure*)data;
-	if (measure->isGIF)
+	/*if (measure->isGIF)
 	{
 		if (measure->GIFSeq >= (measure->gifList.size() - 1))
 		{
@@ -201,7 +206,7 @@ PLUGIN_EXPORT double Update(void* data)
 			measure->GIFSeq++;
 		}
 		Reload(data, measure->rm, 0);
-	}
+	}*/
 	return NULL;
 }
 
@@ -217,8 +222,6 @@ PLUGIN_EXPORT LPCWSTR GetString(void* data)
 PLUGIN_EXPORT void ExecuteBang(void* data, LPCWSTR args)
 {
 	Measure* measure = (Measure*)data;
-
-
 	if (_wcsicmp(args, L"Update") == 0)
 		Reload(data, measure->rm, 0);
 	else if (_wcsnicmp(args, L"Reload", 6) == 0)
@@ -245,9 +248,18 @@ PLUGIN_EXPORT void Finalize(void* data)
 	delete measure;
 }
 
+
 void GetNamePara(std::wstring input, std::wstring& name, std::wstring& para)
 {
-	name = input.substr(0, input.find_first_of(L" \t\r\n"));
+	size_t firstSpace = input.find_first_of(L" \t\r\n");
+	if (firstSpace == std::wstring::npos)
+	{
+		name = L"";
+		para = L"";
+	}
+	else 
+		name = input.substr(0, firstSpace);
+
 	if (name.length() != input.length())
 		para = input.substr(input.find_first_not_of(L" \t\r\n", name.length()));
 	else
@@ -370,10 +382,13 @@ Magick::Color GetColor(std::wstring rawString)
 		{
 			if (rawString.find_first_not_of(L"0123456789ABCDEFabcdef") == std::wstring::npos) //Find non hex character
 			{
-				while (start < 6)
+				size_t remain = rawString.length();
+				while (remain >= 2)
 				{
-					rgba.push_back(std::stoul(rawString.substr(start, 2), 0, 16) / 255);
+					int val = std::stoi(rawString.substr(start, 2), 0, 16);
+					rgba.push_back((double)val / 255);
 					start += 2;
+					remain -= 2;
 				}
 			}
 		}
@@ -384,10 +399,9 @@ Magick::Color GetColor(std::wstring rawString)
 				rgba.push_back(MathParser::ParseF(color) / 255);
 			}
 		}
-
 		if (rgba.size() == 3)
 			result = Magick::ColorRGB(rgba[0], rgba[1], rgba[2]);
-		else if (rgba.size() == 4)
+		else if (rgba.size() > 3)
 			result = Magick::ColorRGB(rgba[0], rgba[1], rgba[2], rgba[3]);
 	}
 
@@ -751,7 +765,7 @@ BOOL ParseEffect(void * rm, ImgStruct &image, std::wstring name, std::wstring pa
 		}
 		else if (_wcsicmp(effect, L"IGNORE") == 0)
 		{
-			image.isDelete = TRUE;
+			image.isIgnore = MathParser::ParseB(parameter);
 		}
 		effect = nullptr;
 		parameter = nullptr;

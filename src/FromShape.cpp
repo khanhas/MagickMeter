@@ -6,7 +6,11 @@ struct ShapeEllipse
 	double y = 0;
 	double radiusX = 0;
 	double radiusY = 0;
-	auto Create(void) { return Magick::DrawableEllipse(x, y, radiusX, radiusY == 0 ? radiusX : radiusY, 0, 360); }
+	auto Create(void) 
+	{ 
+		radiusY = radiusY == 0 ? radiusX : radiusY;
+		return Magick::DrawableEllipse(x, y, radiusX, radiusY, 0, 360);
+	}
 };
 
 struct ShapeRectangle
@@ -29,6 +33,10 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 	std::vector<Magick::Drawable> drawList;
 	Magick::Drawable mainShape;
 	WSVector paraList;
+
+	double width = 0;
+	double height = 0;
+	Magick::Geometry customCanvas;
 	switch (shape)
 	{
 	case ELLIPSE:
@@ -40,6 +48,9 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		e.radiusX = MathParser::ParseF(paraList[2]);
 		e.radiusY = MathParser::ParseF(paraList[3]);
 		mainShape = e.Create();
+		width = e.x + abs(e.radiusX);
+		height = e.y + abs(e.radiusY);
+
 		break;
 	}
 	case RECTANGLE:
@@ -56,19 +67,27 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 			mainShape =  r.Create();
 		else
 			mainShape = r.CreateRound();
+
+		if (r.w > 0)
+			width = r.w + r.x;
+		else
+			width = r.x;
+
+		if (r.h > 0)
+			height = r.h + r.y;
+		else
+			height = r.y;
+
 		break;
 	}
 	}
-
-	size_t width = 600;
-	size_t height = 600;
 
 	int strokeAlign = 0;
 	double strokeWidth = 0;
 
 	//Default color
 	drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
-	drawList.push_back(Magick::DrawableStrokeColor(Magick::Color("transparent")));
+	Magick::Drawable strokeColor = Magick::DrawableStrokeColor(Magick::Color("black"));
 
 	for (int i = 0; i < setting.size(); i++)
 	{
@@ -85,11 +104,11 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 			int tempH = MathParser::ParseI(valList[1]);
 
 			if (tempW <= 0 || tempH <= 0)
-				RmLog(2, L"Invalid Width or Height value. Default canvas 600x600 is used.");
+				RmLog(2, L"Invalid Width or Height value. Default canvas is used.");
 			else
 			{
-				width = tempW;
-				height = tempH;
+				customCanvas = Magick::Geometry((size_t)tempW, (size_t)tempH);
+				customCanvas.aspect(true);
 			}
 			isSetting = TRUE;
 		}
@@ -121,7 +140,7 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		}
 		if (_wcsicmp(name, L"STROKECOLOR") == 0)
 		{
-			drawList.push_back(Magick::DrawableStrokeColor(GetColor(parameter)));
+			strokeColor = Magick::DrawableStrokeColor(GetColor(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"STROKEWIDTH") == 0)
@@ -152,10 +171,21 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 
 	try
 	{
-		dst.contain.size(Magick::Geometry(width, height));
-		drawList.push_back(mainShape);
-		if (strokeWidth != 0 && strokeAlign != 0)
+		if (customCanvas.isValid())
 		{
+			dst.contain.size(customCanvas);
+		}
+		else
+			dst.contain.size(Magick::Geometry((size_t)(width + strokeWidth), (size_t)(height + strokeWidth)));
+		drawList.push_back(mainShape);
+		if (strokeWidth == 0)
+		{
+			drawList.push_back(Magick::DrawableStrokeColor(INVISIBLE));
+			dst.contain.draw(drawList);
+		}
+		else if (strokeWidth != 0 && strokeAlign != 0)
+		{
+			drawList.push_back(strokeColor);
 			Magick::Image temp = dst.contain;
 			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth * 2));
 			dst.contain.draw(drawList);
@@ -172,7 +202,10 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 			}
 		}
 		else
+		{
+			drawList.push_back(strokeColor);
 			dst.contain.draw(drawList);
+		}
 	}
 	catch (Magick::Exception &error_)
 	{

@@ -2,7 +2,6 @@
 
 BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure)
 {
-	RmLog(2, L"com");
 	std::wstring baseImg = setting[0];
 	int baseIndex = NameToIndex(baseImg);
 	if (baseIndex != -1 && baseIndex < measure->imgList.size())
@@ -324,7 +323,6 @@ BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 					dst.contain.composite(measure->imgList[index].contain, 0, 0, compOp);
 				}
-
 			}
 			catch (Magick::Exception &error_)
 			{

@@ -16,6 +16,7 @@ struct ImgStruct
 {
 	Magick::Image	contain;
 	BOOL			isDelete = FALSE;
+	BOOL			isIgnore = FALSE;
 	int				width = (int)contain.columns();
 	int				height = (int)contain.rows();
 };

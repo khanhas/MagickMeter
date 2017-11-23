@@ -3,30 +3,32 @@
 
 BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 {
-	std::wstring text = setting[0];
+	std::string text = ws2s(setting[0]);
 
 	setting.erase(setting.begin());
-
+	
 	double xPos = 0;
 	double yPos = 0;
+
 	size_t width = 600;
 	size_t height = 600;
-	std::vector<Magick::Drawable> drawList;
 
-	BOOL isSysFont = TRUE;
-	int fontWeight = 400;
-	std::string fontFace = "Arial";
-	MagickCore::StyleType fontStyle = MagickCore::NormalStyle;
-	MagickCore::StretchType fontStretch = MagickCore::NormalStretch;
-	std::string fontPath = "";
-	drawList.push_back(Magick::DrawableGravity(MagickCore::NorthWestGravity));
-	drawList.push_back(Magick::DrawablePointSize(40)); //40 * 75% = 30 (default font size)
+	dst.contain = Magick::Image(Magick::Geometry(600, 600), INVISIBLE);
+
+	double skewX = 0;
+	double skewY = 0;
+
+	dst.contain.fontPointsize(40); //40 * 75% = 30 (default font size)
+
+	int align = 7;
 
 	int strokeAlign = 0;
 	double strokeWidth = 0;
+	double angle = 0;
 	Magick::Color strokeColor = Magick::Color("black");
 	//Default color
-	drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
+	dst.contain.fillColor(Magick::Color("white"));
+	dst.contain.textGravity(Magick::NorthWestGravity);
 
 	for (int i = 0; i < setting.size(); i++)
 	{
@@ -34,60 +36,28 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 		GetNamePara(setting[i], tempName, tempParameter);
 		LPCWSTR name = tempName.c_str();
 		LPCWSTR parameter = tempParameter.c_str();
-		
-		BOOL isSetting = FALSE;
-		if (_wcsicmp(name, L"CANVAS") == 0)
-		{
-			WSVector valList = SeparateList(parameter, L",", 2);
-			int tempW = MathParser::ParseI(valList[0]);
-			int tempH = MathParser::ParseI(valList[1]);
 
-			if (tempW <= 0 || tempH <= 0)
-				RmLog(2, L"Invalid Width or Height value. Default canvas 600x600 is used.");
-			else
-			{
-				width = tempW;
-				height = tempH;
-			}
-			isSetting = TRUE;
-		}
-		else if (_wcsicmp(name, L"MOVE") == 0)
+		BOOL isSetting = FALSE;
+		if (_wcsicmp(name, L"MOVE") == 0)
 		{
 			WSVector valList = SeparateList(parameter, L",", 2);
-			if (valList.size() > 0)
-			{
-				xPos = MathParser::ParseF(valList[0]);
-				yPos = MathParser::ParseF(valList[1]);
-			}
-			drawList.push_back(Magick::DrawableTranslation(xPos, yPos));
-			isSetting = TRUE;
-		}
-		else if (_wcsicmp(name, L"ROTATE") == 0)
-		{
-			drawList.push_back(Magick::DrawableRotation(
-				MathParser::ParseF(parameter)
-			));
+			xPos = MathParser::ParseF(valList[0]);
+			yPos = MathParser::ParseF(valList[1]);
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"ANTIALIAS") == 0)
 		{
-			drawList.push_back(Magick::DrawableTextAntialias(
-				MathParser::ParseI(parameter) == 1
-			));
+			dst.contain.textAntiAlias(MathParser::ParseB(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"COLOR") == 0)
 		{
-			drawList.push_back(Magick::DrawableFillColor(
-				GetColor(parameter)
-			));
+			dst.contain.fillColor(GetColor(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"BACKGROUNDCOLOR") == 0)
 		{
-			drawList.push_back(Magick::DrawableTextUnderColor(
-				GetColor(parameter)
-			));
+			dst.contain.textUnderColor(GetColor(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"FACE") == 0)
@@ -95,93 +65,100 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 			std::wstring para = parameter;
 			if (para.find(L"@") == 0) //Font file in @Resource folder
 			{
-				isSysFont = FALSE;
 				std::wstring fontDir = RmReplaceVariables(measure->rm, L"#@#Fonts\\");
 				fontDir += para.substr(1);
 				if (std::experimental::filesystem::exists(fontDir))
-					fontFace = ws2s(fontDir);
+					dst.contain.font(ws2s(fontDir));
 			}
 			else if (std::experimental::filesystem::exists(parameter)) //Direct path to font file
 			{
-				isSysFont = FALSE;
-				fontFace = ws2s(parameter);
+				dst.contain.font(ws2s(parameter));
 			}
 			else //Installed font family name
-				fontFace = ws2s(parameter);
-
+			{
+				dst.contain.fontFamily(ws2s(parameter));
+			}
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"SIZE") == 0)
 		{
-			drawList.push_back(Magick::DrawablePointSize(
-					MathParser::ParseF(parameter) * 100 / 75			//Rainmeter font size = 75% Magick font size
-			));
+			dst.contain.fontPointsize(MathParser::ParseF(parameter) * 100 / 75); //Rm font size = 75% our.
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"WEIGHT") == 0)
 		{
-			fontWeight = MathParser::ParseI(parameter);
-			isSetting = TRUE;
-		}
-		else if (_wcsicmp(name, L"STRETCH") == 0)
-		{
-			fontStretch = (Magick::StretchType)MathParser::ParseI(parameter);
+			dst.contain.fontWeight(MathParser::ParseI(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"STYLE") == 0)
 		{
 			if (_wcsicmp(parameter, L"NORMAL") == 0)
-				fontStyle = Magick::NormalStyle;
+				dst.contain.fontStyle(Magick::NormalStyle);
 
 			else if (_wcsicmp(parameter, L"ITALIC") == 0)
-				fontStyle = Magick::ItalicStyle;
+				dst.contain.fontStyle(Magick::ItalicStyle);
 
 			else if (_wcsicmp(parameter, L"OBLIQUE") == 0)
-				fontStyle = Magick::ObliqueStyle;
+				dst.contain.fontStyle(Magick::ObliqueStyle);
 			else
 			{
+				dst.contain.fontStyle(Magick::NormalStyle);
 				RmLog(2, L"Invalid Text Style. Normal style is applied.");
 			}
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"LINESPACING") == 0)
 		{
-			drawList.push_back(Magick::DrawableTextInterlineSpacing(
-				MathParser::ParseF(parameter)
-			));
+			dst.contain.textInterlineSpacing(MathParser::ParseF(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"WORDSPACING") == 0)
 		{
-			drawList.push_back(Magick::DrawableTextInterwordSpacing(
-				MathParser::ParseF(parameter)
-			));
+			dst.contain.textInterwordSpacing(MathParser::ParseF(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"TEXTKERNING") == 0)
 		{
-			drawList.push_back(Magick::DrawableTextKerning(
-				MathParser::ParseF(parameter)
-			));
+			dst.contain.textKerning(MathParser::ParseF(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"ALIGN") == 0)
 		{
-
-			Magick::DrawableTextAlignment align = MagickCore::LeftAlign;
-			if (_wcsnicmp(parameter, L"LEFT", 4) == 0)
-				align = MagickCore::LeftAlign;
-			else if (_wcsnicmp(parameter, L"RIGHT", 5) == 0)
-				align = MagickCore::RightAlign;
-			else if (_wcsnicmp(parameter, L"CENTER", 6) == 0)
-				align = MagickCore::CenterAlign;
+			if (_wcsnicmp(parameter, L"LEFTCENTER", 10) == 0)
+				align = 1;
+			else if (_wcsnicmp(parameter, L"LEFTBOTTOM", 10) == 0)
+				align = 2;
+			else if (_wcsnicmp(parameter, L"RIGHTCENTER", 11) == 0)
+				align = 3;
+			else if (_wcsnicmp(parameter, L"RIGHTBOTTOM", 11) == 0)
+				align = 4;
+			else if (_wcsnicmp(parameter, L"CENTERCENTER", 11) == 0)
+				align = 5;
+			else if (_wcsnicmp(parameter, L"CENTERBOTTOM", 12) == 0)
+				align = 6;
+			else if (_wcsnicmp(parameter, L"LEFTTOP", 7) == 0 || _wcsnicmp(parameter, L"LEFT", 4) == 0)
+				align = 7;
+			else if (_wcsnicmp(parameter, L"RIGHTTOP", 8) == 0 || _wcsnicmp(parameter, L"RIGHT", 5) == 0)
+				align = 8;
+			else if (_wcsnicmp(parameter, L"CENTERTOP", 9) == 0 || _wcsnicmp(parameter, L"CENTER", 6) == 0)
+				align = 9;
 			else
 				RmLog(2, L"Invalid Align value. Anchor Left is applied");
 
-			drawList.push_back(align);
 			isSetting = TRUE;
 		}
-		else if (_wcsicmp(name, L"DECORATION") == 0)
+		//TODO: Figure out how to widen text zone.
+		else if (_wcsicmp(name, L"SKEW") == 0)
+		{
+			WSVector valList = SeparateList(parameter, L",", 2);
+			skewX = MathParser::ParseF(valList[0]);
+			dst.contain.transformSkewX(skewX);
+
+			skewY = MathParser::ParseF(valList[1]);
+			dst.contain.transformSkewY(skewY);
+			isSetting = TRUE;
+		}
+		/*else if (_wcsicmp(name, L"DECORATION") == 0)
 		{
 			Magick::DrawableTextDecoration decor = MagickCore::NoDecoration;
 			if (_wcsicmp(parameter, L"UNDERLINE") == 0)
@@ -193,12 +170,13 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 			else
 				RmLog(2, L"Invalid Decoration value. No decoration is applied");
 
+
 			drawList.push_back(decor);
 			isSetting = TRUE;
-		}
+		}*/
 		else if (_wcsicmp(name, L"DIRECTION") == 0)
 		{
-			Magick::DrawableTextDirection dir = MagickCore::LeftToRightDirection;
+			Magick::DirectionType dir = MagickCore::LeftToRightDirection;
 			if (_wcsicmp(parameter, L"LEFTTORIGHT") == 0)
 				dir = MagickCore::LeftToRightDirection;
 			else if (_wcsicmp(parameter, L"RIGHTTOLEFT") == 0)
@@ -206,12 +184,12 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 			else
 				RmLog(2, L"Invalid Direction value. Left to Right direction is applied");
 
-			drawList.push_back(dir);
+			dst.contain.textDirection(dir);
 			isSetting = TRUE;
 		}
 		if (_wcsicmp(name, L"STROKECOLOR") == 0)
 		{
-			strokeColor = GetColor(parameter);
+			dst.contain.strokeColor(GetColor(parameter));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"STROKEWIDTH") == 0)
@@ -219,7 +197,7 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 			strokeWidth = MathParser::ParseF(parameter);
 			isSetting = TRUE;
 		}
-		else if (_wcsicmp(name, L"STROKEALIGN") == 0)
+		/*else if (_wcsicmp(name, L"STROKEALIGN") == 0)
 		{
 			if (_wcsicmp(parameter, L"CENTER") == 0)
 				strokeAlign = 0;
@@ -236,60 +214,56 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 			}
 
 			isSetting = TRUE;
-		}
+		}*/
 		if (isSetting)
 			setting[i] = L"";
 	}
-
-	if (isSysFont)
-	{
-		drawList.push_back(Magick::DrawableFont(
-			fontFace,
-			fontStyle,
-			fontWeight,
-			fontStretch
-		));
-	}
-	else
-		drawList.push_back(Magick::DrawableFont(fontFace));
-
-	drawList.push_back(Magick::DrawableText(0, 0, ws2s(text)));
-
+	
 	try
 	{
-		dst.contain = Magick::Image(Magick::Geometry(width, height), Magick::Color("transparent"));
-		if (strokeWidth == 0)
+		Magick::TypeMetric metric;
+		dst.contain.fontTypeMetricsMultiline(text, &metric);
+		switch (align)
 		{
-			drawList.push_back(Magick::DrawableStrokeColor(Magick::Color("transparent")));
-			dst.contain.draw(drawList);
+		case 1:
+			yPos -= metric.textHeight() / 2;
+			break;
+		case 2:
+			yPos -= metric.textHeight();
+			break;
+		case 3:
+			xPos -= metric.textWidth();
+			yPos -= metric.textHeight() / 2;
+			break;
+		case 4:
+			xPos -= metric.textWidth();
+			yPos -= metric.textHeight();
+			break;
+		case 5:
+			xPos -= metric.textWidth() / 2;
+			yPos -= metric.textHeight() / 2;
+			break;
+		case 6:
+			xPos -= metric.textWidth() / 2;
+			yPos -= metric.textHeight();
+			break;
+		case 8:
+			xPos -= metric.textWidth();
+			break;
+		case 9:
+			xPos -= metric.textWidth() / 2;
+			break;
 		}
-		else if (strokeWidth != 0 && strokeAlign != 0)
-		{
-			Magick::Image temp = dst.contain;
-			std::vector<Magick::Drawable> tempList = drawList;
+		dst.contain.strokeWidth(strokeWidth);
+		Magick::Geometry newSize(
+			(size_t)(metric.textWidth()  + strokeWidth / 2 + xPos),
+			(size_t)(metric.textHeight() + strokeWidth / 2 + yPos)
+		);
 
-			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth * 2));
-			drawList.push_back(Magick::DrawableStrokeColor(strokeColor));
-			dst.contain.draw(drawList);
-
-			tempList.push_back(Magick::DrawableStrokeWidth(0));
-			tempList.push_back(Magick::DrawableStrokeColor(Magick::Color("transparent")));
-			temp.draw(tempList);
-			tempList.clear();
-
-			if (strokeAlign == 1)
-				dst.contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
-			else if (strokeAlign == 2)
-				dst.contain.composite(temp, 0, 0, MagickCore::CopyAlphaCompositeOp);
-		}
-		else
-		{
-			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth));
-			drawList.push_back(Magick::DrawableStrokeColor(strokeColor));
-			dst.contain.draw(drawList);
-		}
-
-		drawList.clear();
+		newSize.aspect(true);
+		dst.contain.resize(newSize);
+		
+		dst.contain.annotate(text, Magick::Geometry(0, 0, (ssize_t)xPos, (ssize_t)yPos));
 	}
 	catch (Magick::Exception &error_)
 	{
@@ -299,3 +273,63 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 	return TRUE;
 }
+
+
+/*STROKE ALIGN
+Magick::TypeMetric metrics;
+if (strokeWidth == 0)
+{
+	dst.contain.fontTypeMetricsMultiline(ws2s(text), &metrics);
+	Magick::Geometry newSize(
+		(size_t)(metrics.textWidth() + 200),
+		(size_t)(metrics.textHeight() + 200)
+	);
+	newSize.aspect(true);
+	dst.contain.resize(newSize);
+
+	dst.contain.annotate(ws2s(text), Magick::Geometry(0, 0, 200, 200));
+}
+else if (strokeWidth != 0 && strokeAlign != 0)
+{
+	dst.contain.strokeWidth(strokeWidth * 2);
+	dst.contain.strokeColor(strokeColor);
+
+	dst.contain.fontTypeMetricsMultiline(ws2s(text), &metrics);
+
+	Magick::Geometry newSize(
+		(size_t)(metrics.textWidth()),
+		(size_t)(metrics.textHeight())
+	);
+	newSize.aspect(true);
+	dst.contain.resize(newSize);
+
+	dst.contain.annotate(ws2s(text), newSize, Magick::NorthGravity);
+	Magick::Image temp = dst.contain;
+	temp.strokeColor(INVISIBLE);
+	temp.annotate(ws2s(text), newSize, Magick::NorthGravity);
+
+	if (strokeAlign == 1)
+	{
+		dst.contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
+	}
+	else if (strokeAlign == 2)
+	{
+		dst.contain.composite(temp, 0, 0, MagickCore::CopyAlphaCompositeOp);
+	}
+}
+else
+{
+	dst.contain.strokeWidth(strokeWidth);
+	dst.contain.strokeColor(strokeColor);
+	dst.contain.fontTypeMetricsMultiline(ws2s(text), &metrics);
+
+	Magick::Geometry newSize(
+		(size_t)(metrics.textWidth()),
+		(size_t)(metrics.textHeight())
+	);
+	newSize.aspect(true);
+	dst.contain.resize(newSize);
+
+	dst.contain.annotate(ws2s(text), newSize, Magick::NorthGravity);
+
+}*/

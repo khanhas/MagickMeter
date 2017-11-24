@@ -1,4 +1,4 @@
-# MagickMeter  
+![Title](https://i.imgur.com/1i9SwIk.png) 
 
 Basic usage:
 ```ini
@@ -29,3 +29,9 @@ Image = D:\homer.svg | Scale 200% | Implode -1
 Image2 = Text EXAMPLE FOR#CRLF#GitHub | Size 120 | Shadow 80,10,20,0 ; FF5050
 Image3 = E:\Weed420Meme.jpg | AdaptiveBlur 0,20
 ```
+
+## Example skin:
+
+![SexyPlayer](https://i.imgur.com/VggetzK.png)
+
+![SlashCalendar](https://i.imgur.com/U71KcKm.png)

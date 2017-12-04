@@ -39,3 +39,5 @@ Check out [Wiki](https://github.com/khanhas/MagickMeter/wiki) for more options a
 ![SlashCalendar](https://i.imgur.com/U71KcKm.png)
 
 ![Fracture](https://i.imgur.com/XAGAAjZ.png)
+
+![UnderClock](https://i.imgur.com/aTlATjV.png)

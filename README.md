@@ -41,3 +41,5 @@ Check out [Wiki](https://github.com/khanhas/MagickMeter/wiki) for more options a
 ![Fracture](https://i.imgur.com/XAGAAjZ.png)
 
 ![UnderClock](https://i.imgur.com/aTlATjV.png)
+
+![BitcoinGraph](https://i.imgur.com/r17dnOq.png)

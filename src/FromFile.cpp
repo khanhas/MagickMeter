@@ -3,12 +3,6 @@
 
 BOOL CreateNew(ImgStruct &dst, WSVector &setting, Measure * measure)
 {
-	/*if (measure->isGIF)
-	{
-		dst.contain = measure->gifList[measure->GIFSeq];
-		goto AddEffect;
-	}*/
-
 	std::wstring baseFile = setting[0];
 	setting.erase(setting.begin());
 
@@ -30,65 +24,57 @@ BOOL CreateNew(ImgStruct &dst, WSVector &setting, Measure * measure)
 			if (monitorFlag != std::wstring::npos && (monitorFlag + 1) != baseFile.length())
 				targetFile += "[" + std::to_string(MathParser::ParseI(baseFile.substr(11))) + "]";
 		}
+		else if (_wcsicmp(baseFile.c_str(), L"CLIPBOARD") == 0)
+			targetFile = "clipboard:";
 		else //A FILE PATH
-		{
 			targetFile = ws2s(baseFile);
-		}
-
 
 		BOOL isDefinedSize = FALSE;
 		Magick::Geometry defineSize;
 
-		if (!setting[0].empty())
+		for (auto &settingIt : setting)
 		{
-			isDefinedSize = _wcsnicmp(setting[0].c_str(), L"CANVAS", 6) == 0;
+			std::wstring tempName, tempParameter;
+			GetNamePara(settingIt, tempName, tempParameter);
+			LPCWSTR name = tempName.c_str();
+			LPCWSTR parameter = tempParameter.c_str();
 
-			if (isDefinedSize)
+			if (_wcsicmp(name, L"RENDERSIZE") == 0)
 			{
-				size_t start = setting[0].find_first_not_of(L" \t\n\r", 6);
-				if (start != std::wstring::npos)
+				WSVector imgSize = SeparateParameter(parameter, 3);
+
+				int width = MathParser::ParseI(imgSize[0]);
+				int height = MathParser::ParseI(imgSize[1]);
+
+				if (width <= 0 && height <= 0)
 				{
-					setting[0] = setting[0].substr(start);
-					WSVector imgSize =
-						SeparateList(setting[0].c_str(), L",", 3);
-
-					int width  = MathParser::ParseI(imgSize[0]);
-					int height = MathParser::ParseI(imgSize[1]);
-
-					if (width <= 0 && height <= 0)
-					{
-						RmLogF(measure->rm, 2, L"%s: Invalid Canvas width or height values. Read image at normal size.", baseFile);
-						isDefinedSize = FALSE;
-					}
-					else
-					{
-						if (width > 0) defineSize.width(width);
-						if (height > 0) defineSize.height(height);
-						int resizeType = MathParser::ParseI(imgSize[2]);
-						switch (resizeType)
-						{
-						case 1:
-							defineSize.aspect(true);
-							break;
-						case 2:
-							defineSize.fillArea(true);
-							break;
-						case 3:
-							defineSize.greater(true);
-							break;
-						case 4:
-							defineSize.less(true);
-							break;
-						case 5:
-							defineSize.limitPixels(true);
-							break;
-						}
-					}
+					RmLogF(measure->rm, 2, L"%s is invalid RenderSize. Render image at normal size.", parameter);
+					isDefinedSize = FALSE;
 				}
 				else
-					isDefinedSize = FALSE;
+				{
+					if (width > 0) defineSize.width(width);
+					if (height > 0) defineSize.height(height);
+					int resizeType = MathParser::ParseI(imgSize[2]);
+					switch (resizeType)
+					{
+					case 1:
+						defineSize.aspect(true);
+						break;
+					case 2:
+						defineSize.fillArea(true);
+						break;
+					case 3:
+						defineSize.greater(true);
+						break;
+					case 4:
+						defineSize.less(true);
+						break;
+					}
+					isDefinedSize = TRUE;
+				}
 
-				setting.erase(setting.begin());
+				settingIt = L"";
 			}
 		}
 
@@ -97,7 +83,6 @@ BOOL CreateNew(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 		if (isDefinedSize)
 		{
-			//TODO: CRASH!
 			dst.contain.read(defineSize, targetFile); //Why it just works with SVG?
 			dst.contain.resize(defineSize);
 		}
@@ -112,25 +97,8 @@ BOOL CreateNew(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 		dst.contain.strip();
 
-		/*LPCWSTR fileExt = s2ws(dst.contain.magick()).c_str();
-		RmLog(2, fileExt);
-		if (_wcsicmp(fileExt, L"GIF") == 0 ||
-			_wcsicmp(fileExt, L"MP4") == 0 ||
-			_wcsicmp(fileExt, L"MKV") == 0)
-		{
-			Magick::readImages(&measure->gifList, targetFile);
-
-			if (isDefinedSize)
-			{
-				std::for_each(
-					measure->gifList.begin(),
-					measure->gifList.end(),
-					Magick::resizeImage(Magick::Geometry(width, height))
-				);
-			}
-			dst.contain = measure->gifList[0];
-			measure->isGIF = TRUE;
-		}*/
+		dst.W = dst.contain.columns();
+		dst.H = dst.contain.rows();
 	}
 	catch(Magick::Exception &error_)
 	{

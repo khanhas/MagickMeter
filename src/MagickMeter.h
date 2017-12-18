@@ -18,6 +18,7 @@ typedef std::vector<std::wstring> WSVector;
 struct ImgStruct
 {
 	Magick::Image	contain = ONEPIXEL;
+	int				index;
 	BOOL			isDelete = FALSE;
 	BOOL			isIgnore = FALSE;
 	size_t			W = 0;
@@ -47,6 +48,7 @@ int NameToIndex(std::wstring name);
 void GetNamePara(std::wstring input, std::wstring& name, std::wstring& para);
 void error2pws(Magick::Exception error);
 void ParseExtend(void * rm, WSVector &parentVector, std::wstring parentName, BOOL isRecursion = FALSE);
+void ParseInternalVariable(Measure * measure, std::wstring &rawSetting, ImgStruct &srcImg);
 
 typedef enum 
 {
@@ -55,10 +57,8 @@ typedef enum
 	TEXT,
 	ELLIPSE,
 	RECTANGLE,
-	PATH,		//possibly
-	LINE,		//possibly
-	CURVE,		//possibly
-	ARC,		//possibly
+	POLYGON,
+	PATH,
 	COMBINE,
 	CLONE,
 	GRADIENT

@@ -8,7 +8,10 @@ struct ShapeEllipse
 	double radiusY = 0;
 	double start = 0;
 	double end = 360;
-	auto Create(void) { return Magick::DrawableEllipse(x, y, radiusX, radiusY, start, end); }
+	auto Create(void) { 
+		//Because of Antialias, ellipse exceeds its actual size 1 pixel.
+		return Magick::DrawableEllipse(x, y, radiusX - radiusX == 0 ? 0 : 0.5, radiusY - radiusY == 0 ? 0 : 0.5, start, end);
+	}
 };
 
 struct ShapeRectangle
@@ -22,6 +25,44 @@ struct ShapeRectangle
 	auto Create(void)		{ return Magick::DrawableRectangle(x, y, x + w, y + h); }
 	auto CreateRound(void)	{ return Magick::DrawableRoundRectangle(x, y, x + w, y + h, cornerX, cornerY); }
 };
+
+class PathCubicSmoothCurvetoAbs : public Magick::VPathBase
+{
+public:
+	// Draw a single curve
+	PathCubicSmoothCurvetoAbs(const Magick::PathQuadraticCurvetoArgs &args_)
+	: _args(1, args_) {}
+	// Draw multiple curves
+	PathCubicSmoothCurvetoAbs(const Magick::PathQuadraticCurvetoArgsList &args_)
+	: _args(args_) {}
+
+	// Copy constructor
+	PathCubicSmoothCurvetoAbs(const PathCubicSmoothCurvetoAbs& original_)
+	: VPathBase(original_), _args(original_._args) {}
+
+	/*virtual*/ ~PathCubicSmoothCurvetoAbs(void) {};
+
+	// Operator to invoke equivalent draw API call
+	/*virtual*/ void operator()(MagickCore::DrawingWand *context_) const
+	{
+		for (Magick::PathQuadraticCurvetoArgsList::const_iterator p = _args.begin();
+			p != _args.end(); p++)
+		{
+			DrawPathCurveToSmoothAbsolute(context_, p->x1(), p->y1(), p->x(), p->y());
+		}
+	}
+
+	// Return polymorphic copy of object
+	/*virtual*/
+	VPathBase* copy() const
+	{
+		return new PathCubicSmoothCurvetoAbs(*this);
+	}
+
+private:
+	Magick::PathQuadraticCurvetoArgsList _args;
+};
+
 
 auto ParseNumber = [](auto var, const WCHAR* value, auto* func) -> decltype(var)
 {
@@ -46,66 +87,104 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 
 	double width = 0;
 	double height = 0;
+
+	double strokeWidth = 0;
+
 	Magick::Geometry customCanvas;
 	switch (shape)
 	{
 	case ELLIPSE:
 	{
-		paraList = SeparateParameter(parameter, 6, L"");
+		paraList = SeparateParameter(parameter, NULL);
+		size_t pSize = paraList.size();
+		if (pSize < 3)
+		{
+			RmLog(2, L"Ellipse: Not enough parameter.");
+			return FALSE;
+		}
 		ShapeEllipse e;
 		e.x = MathParser::ParseF(paraList[0]);
 		e.y = MathParser::ParseF(paraList[1]);
 		e.radiusX = MathParser::ParseF(paraList[2]);
 
-		if (!paraList[3].empty())
-			e.radiusY = MathParser::ParseF(paraList[3]);
-		
-		if (e.radiusY == 0)
-			e.radiusY = e.radiusX;
+		e.radiusY = e.radiusX;
+		if (pSize > 3) e.radiusY = MathParser::ParseF(paraList[3]);
 
-		if (!paraList[4].empty()) e.start = MathParser::ParseF(paraList[4]);
+		if (pSize > 4) e.start = MathParser::ParseF(paraList[4]);
 
-		if (!paraList[5].empty()) e.end = MathParser::ParseF(paraList[5]);
+		if (pSize > 5) e.end = MathParser::ParseF(paraList[5]);
 
 		mainShape = e.Create();
-		width = e.x + abs(e.radiusX);
+		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
+
+		width = e.x + abs(e.radiusX); 
 		height = e.y + abs(e.radiusY);
+
+		dst.X = (ssize_t)(e.x - abs(e.radiusX));
+		dst.Y = (ssize_t)(e.y - abs(e.radiusY));
+		dst.W = (size_t)(e.radiusX * 2.0);
+		dst.H = (size_t)(e.radiusY * 2.0);
 
 		break;
 	}
 	case RECTANGLE:
 	{
-		paraList = SeparateParameter(parameter, 6, L"");
+		paraList = SeparateParameter(parameter, NULL);
+		size_t pSize = paraList.size();
+		if (pSize < 4)
+		{
+			RmLog(2, L"Rectangle: Not enough parameter.");
+			return FALSE;
+		}
+
 		ShapeRectangle r;
 		r.x = MathParser::ParseF(paraList[0]);
 		r.y = MathParser::ParseF(paraList[1]);
 		r.w = MathParser::ParseF(paraList[2]);
 		r.h = MathParser::ParseF(paraList[3]);
 
-		if (!paraList[4].empty()) r.cornerX = MathParser::ParseF(paraList[4]);
+		if (pSize > 4) r.cornerX = MathParser::ParseF(paraList[4]);
 
-		if (!paraList[5].empty()) r.cornerY = MathParser::ParseF(paraList[5]);
-
-		if (r.cornerY == 0)
-			r.cornerY = r.cornerX;
+		r.cornerY = r.cornerX;
+		if (pSize > 5) r.cornerY = MathParser::ParseF(paraList[5]);
 
 		if (r.cornerX == 0 && r.cornerY == 0)
 			mainShape =  r.Create();
 		else
 			mainShape = r.CreateRound();
 
+		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
+
 		if (r.w > 0)
+		{
 			width = r.w + r.x;
+			dst.X = (ssize_t)r.x;
+		}
 		else
+		{
 			width = r.x;
+			dst.X = (ssize_t)(r.x + r.w);
+		}
+		dst.W = (size_t)abs(r.w);
 
 		if (r.h > 0)
+		{
 			height = r.h + r.y;
+			dst.Y = (ssize_t)r.y;
+		}
 		else
+		{
 			height = r.y;
-
+			dst.Y = (ssize_t)(r.y + r.h);
+		}
+		dst.H = (size_t)abs(r.h);
 		break;
 	}
+	/*case POLYGON:
+		paraList = SeparateParameter(parameter, NULL);
+		size_t listSize = paraList.size();
+		if ()
+*/
 	case PATH:
 	{
 		parameter = RmReadString(measure->rm, parameter.c_str(), L"");
@@ -134,17 +213,23 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 				return FALSE;
 			}
 			
+			double imgX1 = curX;
+			double imgY1 = curY;
+			double imgX2 = curX;
+			double imgY2 = curY;
+
 			for (auto &path : pathList)
 			{
-				std::wstring tempName, tempParameter;
-				GetNamePara(path, tempName, tempParameter);
+				std::wstring tempName, parameter;
+				GetNamePara(path, tempName, parameter);
+				ParseInternalVariable(measure, parameter, dst);
+
 				LPCWSTR name = tempName.c_str();
-				LPCWSTR parameter = tempParameter.c_str();
 
 				if (_wcsicmp(name, L"LINETO") == 0)
 				{
 					WSVector l = SeparateParameter(parameter, NULL);
-					if (l.size() >= 2)
+					if (l.size() > 1)
 					{
 						curX = MathParser::ParseF(l[0]);
 						curY = MathParser::ParseF(l[1]);
@@ -169,14 +254,14 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 						bool sweep = false;
 						bool size = false;
 
-						if (pSize >= 3) xRadius = MathParser::ParseF(l[2].c_str());
+						if (pSize > 2) xRadius = MathParser::ParseF(l[2].c_str());
 
 						double yRadius = xRadius;
 
-						if (pSize >= 4) yRadius = ParseNumber(yRadius, l[3].c_str(), MathParser::ParseF);
-						if (pSize >= 5) angle = ParseNumber(angle, l[4].c_str(), MathParser::ParseF);
-						if (pSize >= 6) ParseBool(sweep, l[5].c_str());
-						if (pSize >= 7) ParseBool(size, l[6].c_str());
+						if (pSize > 3) yRadius = ParseNumber(yRadius, l[3].c_str(), MathParser::ParseF);
+						if (pSize > 4) angle = ParseNumber(angle, l[4].c_str(), MathParser::ParseF);
+						if (pSize > 5) ParseBool(sweep, l[5].c_str());
+						if (pSize > 6) ParseBool(size, l[6].c_str());
 
 						p.push_back(Magick::PathArcAbs(Magick::PathArcArgs(
 							xRadius, yRadius,
@@ -194,7 +279,7 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 					size_t pSize = l.size();
 					if (pSize < 4)
 					{
-						RmLogF(measure->rm, 2, L"%s %s is invalid path segment.", name, parameter);
+						RmLogF(measure->rm, 2, L"%s %s is invalid CurveTo segment.", name, parameter);
 						continue;
 					}
 					double x = MathParser::ParseF(l[0].c_str());
@@ -202,9 +287,11 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 					double cx1 = MathParser::ParseF(l[2].c_str());
 					double cy1 = MathParser::ParseF(l[3].c_str());
 					if (pSize < 6)
+					{
 						p.push_back(Magick::PathQuadraticCurvetoAbs(Magick::PathQuadraticCurvetoArgs(
 							cx1, cy1, x, y
 						)));
+					}
 					else
 					{
 						double cx2 = MathParser::ParseF(l[4].c_str());
@@ -216,31 +303,72 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 					curX = x;
 					curY = y;
 				}
+				else if (_wcsicmp(name, L"SMOOTHCURVETO") == 0)
+				{
+					WSVector l = SeparateParameter(parameter, NULL);
+					size_t pSize = l.size();
+					if (pSize < 2)
+					{
+						RmLogF(measure->rm, 2, L"%s %s is invalid path segment.", name, parameter);
+						continue;
+					}
+					double x = MathParser::ParseF(l[0].c_str());
+					double y = MathParser::ParseF(l[1].c_str());
+
+					if (pSize > 3)
+					{
+						double	cx = MathParser::ParseF(l[2].c_str());
+						double	cy = MathParser::ParseF(l[3].c_str());
+						
+						p.push_back(PathCubicSmoothCurvetoAbs(Magick::PathQuadraticCurvetoArgs(
+							cx, cy, x, y
+						)));
+					}
+					else
+					{
+						p.push_back(Magick::PathSmoothQuadraticCurvetoAbs(Magick::Coordinate(
+							x, y
+						)));
+					}
+					curX = x;
+					curY = y;
+				}
 				else if (_wcsicmp(name, L"CLOSEPATH") == 0)
 				{
 					if (MathParser::ParseB(parameter))
 						p.push_back(Magick::PathClosePath());
 				}
+
+				if (curX < imgX1) imgX1 = curX;
+				if (curY < imgY1) imgY1 = curY;
+				if (curX > imgX2) imgX2 = curX;
+				if (curY > imgY2) imgY2 = curY;
 			}
 			mainShape = Magick::DrawablePath(p);
-			
+			drawList.push_back(Magick::DrawableFillColor(INVISIBLE));
+			strokeWidth = 2;
+			width = imgX2;
+			height = imgY2;
+			dst.X = (ssize_t)ceil(imgX1);
+			dst.Y = (ssize_t)ceil(imgY1);
+			dst.W = (size_t)ceil(imgX2 - imgX1);
+			dst.H = (size_t)ceil(imgY2 - imgY1);
 		}
 	}
 	}
 
 	int strokeAlign = 0;
-	double strokeWidth = 0;
-
+	
 	//Default color
-	drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
 	Magick::Drawable strokeColor = Magick::DrawableStrokeColor(Magick::Color("black"));
 
 	for (int i = 0; i < setting.size(); i++)
 	{
-		std::wstring tempName, tempParameter;
-		GetNamePara(setting[i], tempName, tempParameter);
+		std::wstring tempName, parameter;
+		GetNamePara(setting[i], tempName, parameter);
+		ParseInternalVariable(measure, parameter, dst);
+
 		LPCWSTR name = tempName.c_str();
-		LPCWSTR parameter = tempParameter.c_str();
 
 		BOOL isSetting = FALSE;
 		if (_wcsicmp(name, L"CANVAS") == 0)
@@ -297,19 +425,19 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		}
 		else if (_wcsicmp(name, L"STROKEWIDTH") == 0)
 		{
-			strokeWidth = MathParser::ParseF(parameter);
+			strokeWidth = abs(MathParser::ParseF(parameter));
 			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"STROKEALIGN") == 0)
 		{
-			if (_wcsicmp(parameter, L"CENTER") == 0)
+			if (_wcsicmp(parameter.c_str(), L"CENTER") == 0)
 				strokeAlign = 0;
 
-			else if (_wcsicmp(parameter, L"OUTSIDE") == 0)
+			else if (_wcsicmp(parameter.c_str(), L"OUTSIDE") == 0)
 				strokeAlign = 1;
 
-			else if (_wcsicmp(parameter, L"INSIDE") == 0)
+			else if (_wcsicmp(parameter.c_str(), L"INSIDE") == 0)
 				strokeAlign = 2;
 			else
 			{
@@ -320,11 +448,11 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		else if (_wcsicmp(name, L"STROKELINEJOIN") == 0)
 		{
 			Magick::LineJoin lj;
-			if (_wcsicmp(parameter, L"MITER") == 0)
+			if (_wcsicmp(parameter.c_str(), L"MITER") == 0)
 				lj = MagickCore::MiterJoin;
-			else if (_wcsicmp(parameter, L"ROUND") == 0)
+			else if (_wcsicmp(parameter.c_str(), L"ROUND") == 0)
 				lj = MagickCore::RoundJoin;
-			else if (_wcsicmp(parameter, L"BEVEL") == 0)
+			else if (_wcsicmp(parameter.c_str(), L"BEVEL") == 0)
 				lj = MagickCore::BevelJoin;
 			else
 			{
@@ -336,11 +464,11 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		else if (_wcsicmp(name, L"STROKELINECAP") == 0)
 		{
 			Magick::LineCap lc;
-			if (_wcsicmp(parameter, L"FLAT") == 0)
+			if (_wcsicmp(parameter.c_str(), L"FLAT") == 0)
 				lc = MagickCore::ButtCap;
-			else if (_wcsicmp(parameter, L"ROUND") == 0)
+			else if (_wcsicmp(parameter.c_str(), L"ROUND") == 0)
 				lc = MagickCore::RoundCap;
-			else if (_wcsicmp(parameter, L"SQUARE") == 0)
+			else if (_wcsicmp(parameter.c_str(), L"SQUARE") == 0)
 				lc = MagickCore::SquareCap;
 			else
 			{
@@ -378,13 +506,18 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		{
 			drawList.push_back(strokeColor);
 			Magick::Image temp = dst.contain;
-			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth * 2));
+			double strokeWidth2 = strokeWidth * 2;
+			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth2));
 			dst.contain.draw(drawList);
 
 			drawList.push_back(Magick::DrawableStrokeWidth(0));
 			temp.draw(drawList);
 			if (strokeAlign == 1)
 			{
+				dst.X -= (ssize_t)ceil(strokeWidth);
+				dst.Y -= (ssize_t)ceil(strokeWidth);
+				dst.W += (size_t)ceil(strokeWidth2);
+				dst.H += (size_t)ceil(strokeWidth2);
 				dst.contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
 			}
 			else if (strokeAlign == 2)
@@ -394,6 +527,10 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		}
 		else
 		{
+			dst.X -= (ssize_t)ceil(strokeWidth / 2);
+			dst.Y -= (ssize_t)ceil(strokeWidth / 2);
+			dst.W += (size_t)ceil(strokeWidth);
+			dst.H += (size_t)ceil(strokeWidth);
 			drawList.push_back(strokeColor);
 			dst.contain.draw(drawList);
 		}

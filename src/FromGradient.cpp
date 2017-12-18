@@ -30,16 +30,17 @@ BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 	for (int i = 0; i < setting.size(); i++)
 	{
-		std::wstring tempName, tempParameter;
-		GetNamePara(setting[i], tempName, tempParameter);
+		std::wstring tempName, parameter;
+		GetNamePara(setting[i], tempName, parameter);
+		ParseInternalVariable(measure, parameter, dst);
+
 		LPCWSTR name = tempName.c_str();
-		LPCWSTR parameter = tempParameter.c_str();
 
 		BOOL isSetting = FALSE;
 
 		if (_wcsicmp(name, L"CANVAS") == 0)
 		{
-			WSVector valList = SeparateList(parameter, L",", 2);
+			WSVector valList = SeparateParameter(parameter, 2);
 			int tempW = MathParser::ParseI(valList[0]);
 			int tempH = MathParser::ParseI(valList[1]);
 
@@ -104,7 +105,7 @@ BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
 		}
 		else if (_wcsicmp(name, L"COLORLIST") == 0)
 		{
-			WSVector colorList = SeparateList(RmReadString(measure->rm, parameter, L""), L"|", NULL);
+			WSVector colorList = SeparateList(RmReadString(measure->rm, parameter.c_str(), L""), L"|", NULL);
 			if (colorList.size() > 0)
 			{
 				std::vector <MagickCore::StopInfo> colorMap;
@@ -139,15 +140,16 @@ BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
 	if (totalColor != 0)
 	{
 		dst.contain.scale(customCanvas);
+		MagickCore::ExceptionInfo error;
 		MagickCore::MagickBooleanType drawSucceeced = MagickCore::GradientImage(
 			dst.contain.image(),
 			type, spread,
 			stopColors, totalColor,
-			nullptr
+			&error
 		);
 
 		stopColors = nullptr;
-		if (drawSucceeced == MagickCore::MagickBooleanType::MagickFalse)
+		if (drawSucceeced == MagickCore::MagickFalse)
 		{
 			RmLog(2, L"Could not draw Gradient");
 			return FALSE;

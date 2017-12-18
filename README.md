@@ -36,9 +36,11 @@ Check out [Wiki](https://github.com/khanhas/MagickMeter/wiki) for more options a
 
 ![SexyPlayer](https://i.imgur.com/VggetzK.png)
 
-![SlashCalendar](https://i.imgur.com/U71KcKm.png)
+![SexyClock](https://i.imgur.com/bSWW9eO.png)
 
-![Fracture](https://i.imgur.com/XAGAAjZ.png)
+![SlashCalendar](https://i.imgur.com/LRpTWO3.png)
+
+![Fracture](https://i.imgur.com/dnCDZvQ.png)
 
 ![UnderClock](https://i.imgur.com/aTlATjV.png)
 

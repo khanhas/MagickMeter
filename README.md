@@ -1,6 +1,8 @@
 ![Title](https://i.imgur.com/1i9SwIk.png) 
 
-## How to use:
+[![GitHub release](https://img.shields.io/github/release/khanhas/MagickMeter.svg?colorB=97CA00?label=version)](https://github.com/khanhas/MagickMeter/releases/latest) [![Github All Releases](https://img.shields.io/github/downloads/khanhas/MagickMeter/total.svg?colorB=97CA00)](https://github.com/khanhas/MagickMeter/releases)  
+
+## How to install:
 #### 1. Download ImageMagick: https://www.imagemagick.org/download/binaries/ImageMagick-7.0.7-15-Q16-x64-dll.exe  
 You can download newer version if there's one, but always download **Q16 x64** version.  
 #### 2. Install ImageMagick. You must check `Add application directory to your system path`:
@@ -11,7 +13,7 @@ Remaining are optional, you can check them if you know what they do.
 #### 3. Download and install Example skins pack to install plugin   
 #### Or download plugin version corresponding to your system and manually copy plugin DLL to `%appdata%\Rainmeter\Plugins\`
 
-Basic usage:
+## Basic usage:
 ```ini
 [MagickMeter_1]
 Measure = Plugin
@@ -43,7 +45,7 @@ Image3 = File E:\Weed420Meme.jpg | AdaptiveBlur 0,20
 
 Check out [Wiki](https://github.com/khanhas/MagickMeter/wiki) for more options and modifiers.
 
-## Example skin:
+## Example skins:
 
 ![SexyPlayer](https://i.imgur.com/VggetzK.png)
 

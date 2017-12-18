@@ -1,5 +1,16 @@
 ![Title](https://i.imgur.com/1i9SwIk.png) 
 
+## How to use:
+#### 1. Download ImageMagick: https://www.imagemagick.org/download/binaries/ImageMagick-7.0.7-15-Q16-x64-dll.exe  
+You can download newer version if there's one, but always download **Q16 x64** version.  
+#### 2. Install ImageMagick. You must check `Add application directory to your system path`:
+
+![InstallStep](https://i.imgur.com/6TbBlTo.png)
+  
+Remaining are optional, you can check them if you know what they do.  
+#### 3. Download and install Example skins pack to install plugin   
+#### Or download plugin version corresponding to your system and manually copy plugin DLL to `%appdata%\Rainmeter\Plugins\`
+
 Basic usage:
 ```ini
 [MagickMeter_1]

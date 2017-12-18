@@ -10,8 +10,8 @@ You can download newer version if there's one, but always download **Q16 x64** v
 ![InstallStep](https://i.imgur.com/6TbBlTo.png)
   
 Remaining are optional, you can check them if you know what they do.  
-#### 3. Download and install Example skins pack to install plugin   
-#### Or download plugin version corresponding to your system and manually copy plugin DLL to `%appdata%\Rainmeter\Plugins\`
+#### 3. [Download](https://github.com/khanhas/MagickMeter/releases) and install Example skins pack to install plugin   
+#### Or [download](https://github.com/khanhas/MagickMeter/releases) plugin version corresponding to your system and manually copy plugin DLL to `%appdata%\Rainmeter\Plugins\`
 
 ## Basic usage:
 ```ini

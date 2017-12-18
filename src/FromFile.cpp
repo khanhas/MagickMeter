@@ -34,10 +34,11 @@ BOOL CreateNew(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 		for (auto &settingIt : setting)
 		{
-			std::wstring tempName, tempParameter;
-			GetNamePara(settingIt, tempName, tempParameter);
+			std::wstring tempName, parameter;
+			GetNamePara(settingIt, tempName, parameter);
+			ParseInternalVariable(measure, parameter, dst);
+
 			LPCWSTR name = tempName.c_str();
-			LPCWSTR parameter = tempParameter.c_str();
 
 			if (_wcsicmp(name, L"RENDERSIZE") == 0)
 			{

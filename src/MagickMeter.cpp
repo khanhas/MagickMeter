@@ -10,7 +10,6 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure);
 BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * measure);
 BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure);
 BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure);
-void ParseInternalVariable(Measure * measure, std::wstring &rawSetting, int curIndex, BOOL isSelf);
 BOOL ParseEffect(Measure * measure, ImgStruct &img, std::wstring name, std::wstring para);
 std::wstring color2wstr(Magick::Color c);
 std::vector<Magick::Color> GenColor(Magick::Image img, size_t totalColor);
@@ -37,9 +36,6 @@ PLUGIN_EXPORT void Initialize(void** data, void* rm)
 	std::wstring mesName = RmGetMeasureName(rm);
 	measure->skin = RmGetSkin(rm);
 	Magick::InitializeMagick("\\");
-	Magick::SetRandomSeed(100);
-	if (Magick::EnableOpenCL())
-		RmLog(2, L"OpenCL is supported.");
 
 	std::wstring tempFolder = RmReplaceVariables(rm, L"%temp%");
 	std::wstring disName = RmGetSkinName(rm);
@@ -103,13 +99,15 @@ BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
 
 	ImgType type = GetType(typeName);
 
-	int imageIndex = NameToIndex(imageName);
+	curImg.index = NameToIndex(imageName);
+
+	curImg.colorList.resize(5, INVISIBLE);
 
 	BOOL isValid = TRUE;
 	if (!typePara.empty())
 	{
 		imgVec[0] = typePara;
-		ParseInternalVariable(measure, imgVec[0], imageIndex, false);
+		ParseInternalVariable(measure, imgVec[0], curImg);
 		switch (type)
 		{
 		case NORMAL:
@@ -131,7 +129,14 @@ BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
 			int index = NameToIndex(imgVec[0]);
 
 			if (index < measure->imgList.size() && index >= 0)
-				curImg.contain = measure->imgList[index].contain;
+			{
+				int saveIndex = curImg.index;
+				curImg = measure->imgList[index];
+				//Reset to normal state.
+				curImg.isIgnore = FALSE;
+				curImg.isDelete = FALSE;
+				curImg.index = saveIndex;
+			}
 			else
 			{
 				RmLogF(measure->rm, 2, L"%s is invalid Image to clone.", imgVec[0].c_str());
@@ -151,22 +156,22 @@ BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
 
 	if (isValid && curImg.contain.isValid())
 	{
+		curImg.colorList = GenColor(curImg.contain, 5);
 
 		for (auto &settingIt : imgVec)
 		{
 			std::wstring name, parameter;
 			GetNamePara(settingIt, name, parameter);
-			ParseInternalVariable(measure, parameter, imageIndex, false);
+			ParseInternalVariable(measure, parameter, curImg);
+
 			if (!ParseEffect(measure, curImg, name, parameter))
 				return FALSE;
 		}
 
-		curImg.colorList = GenColor(curImg.contain, 5);
-
 		if (isPush)
 			measure->imgList.push_back(curImg);
 		else
-			measure->imgList[imageIndex].contain = curImg.contain;
+			measure->imgList[curImg.index] = curImg;
 	}
 	else
 	{
@@ -202,7 +207,7 @@ void ComposeFinalImage(Measure * measure)
 
 	Magick::Geometry newSize(newW, newH);
 	newSize.aspect(true);
-	measure->finalImg.resize(newSize);
+	measure->finalImg.scale(newSize);
 
 	for (int i = 0; i < measure->imgList.size(); i++)
 	{
@@ -697,7 +702,6 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 				RmLog(2, L"Perspective: Not enough control point. Requires 4 pairs of X and Y.");
 				return TRUE;
 			}
-
 			double doubleArray[16];
 			//Top Left
 			doubleArray[0]  = (double)image.X;
@@ -727,6 +731,22 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 				doubleArray,
 				true
 			);
+		}
+		else if (_wcsicmp(effect, L"OPACITY") == 0)
+		{
+			double a = MathParser::ParseF(parameter);
+			if (a > 100) a = 100;
+			if (a < 0) a = 0;
+			a /= 100;
+			for (int i = 0; i < image.contain.columns(); i++)
+			{
+				for (int j = 0; j < image.contain.rows(); j++)
+				{
+					Magick::ColorRGB c = image.contain.pixelColor(i, j);
+					c.alpha(c.alpha() * a);
+					image.contain.pixelColor(i, j, c);
+				}
+			}
 		}
 		else if (_wcsicmp(effect, L"SHADE") == 0)
 		{
@@ -965,6 +985,12 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 				GetColor(valList[1])
 			);
 		}
+		else if (_wcsicmp(effect, L"GRAYSCALE") == 0)
+		{
+			int method = MathParser::ParseI(parameter);
+			if (method > 0 && method <= 9)
+				image.contain.grayscale((Magick::PixelIntensityMethod)method);
+		}
 		else if (_wcsicmp(effect, L"NEGATE") == 0)
 		{
 			image.contain.negate(MathParser::ParseB(parameter));
@@ -1040,7 +1066,7 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 	}
 }
 
-void ParseInternalVariable(Measure * measure, std::wstring &rawSetting, int curIndex, BOOL isSelf)
+void ParseInternalVariable(Measure * measure, std::wstring &rawSetting, ImgStruct &srcImg)
 {
 	size_t start = rawSetting.find(L"{");
 	while (start != std::wstring::npos)
@@ -1052,46 +1078,50 @@ void ParseInternalVariable(Measure * measure, std::wstring &rawSetting, int curI
 
 			WSVector v = SeparateList(f, L":", 2, L"");
 			int index = NameToIndex(v[0]);
-			if (index != -1 && 
-				((isSelf && index <= curIndex) || (!isSelf && index < curIndex)))
+			if (index != -1 && index <= srcImg.index)
 			{
+				ImgStruct tempStruct;
+				if (index == srcImg.index)
+					tempStruct = srcImg;
+				else
+					tempStruct = measure->imgList[index];
 				LPCWSTR para = v[1].c_str();
 				std::wstring c = L"";
 				if (_wcsnicmp(para, L"X", 1) == 0)
 				{
-					c = std::to_wstring(measure->imgList[index].X);
+					c = std::to_wstring(tempStruct.X);
 				}
 				else if (_wcsnicmp(para, L"Y", 1) == 0)
 				{
-					c = std::to_wstring(measure->imgList[index].Y);
+					c = std::to_wstring(tempStruct.Y);
 				}
 				else if (_wcsnicmp(para, L"W", 1) == 0)
 				{
-					c = std::to_wstring(measure->imgList[index].W);
+					c = std::to_wstring(tempStruct.W);
 				}
 				else if (_wcsnicmp(para, L"H", 1) == 0)
 				{
-					c = std::to_wstring(measure->imgList[index].H);
+					c = std::to_wstring(tempStruct.H);
 				}
 				else if (_wcsicmp(para, L"COLORBG") == 0)
 				{
-					c = color2wstr(measure->imgList[index].colorList[0]);
+					c = color2wstr(tempStruct.colorList[0]);
 				}
 				else if (_wcsicmp(para, L"COLOR1") == 0)
 				{
-					c = color2wstr(measure->imgList[index].colorList[1]);
+					c = color2wstr(tempStruct.colorList[1]);
 				}
 				else if (_wcsicmp(para, L"COLOR2") == 0)
 				{
-					c = color2wstr(measure->imgList[index].colorList[2]);
+					c = color2wstr(tempStruct.colorList[2]);
 				}
 				else if (_wcsicmp(para, L"COLOR3") == 0)
 				{
-					c = color2wstr(measure->imgList[index].colorList[3]);
+					c = color2wstr(tempStruct.colorList[3]);
 				}
 				else if (_wcsicmp(para, L"COLORFG") == 0)
 				{
-					c = color2wstr(measure->imgList[index].colorList[4]);
+					c = color2wstr(tempStruct.colorList[4]);
 				}
 
 				if (!c.empty())

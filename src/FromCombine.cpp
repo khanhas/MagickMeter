@@ -2,20 +2,26 @@
 
 BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure)
 {
-	std::wstring baseImg = setting[0];
-	int baseIndex = NameToIndex(baseImg);
+	std::wstring baseName = setting[0];
+	int baseIndex = NameToIndex(baseName);
 	if (baseIndex != -1 && baseIndex < measure->imgList.size())
 	{
-		dst.contain = measure->imgList[baseIndex].contain;
+		int saveIndex = dst.index;
+		dst = measure->imgList[baseIndex];
+		//Reset to normal state.
+		dst.isIgnore = FALSE; 
+		dst.isDelete = FALSE;
+		dst.index = saveIndex;
 		measure->imgList[baseIndex].isDelete = TRUE;
 	}
 	else
 	{
-		RmLogF(measure->rm, 2, L"ParentImageName: \"%s\" is invalid.", baseImg.c_str());
+		RmLogF(measure->rm, 2, L"ParentImageName: \"%s\" is invalid.", baseName.c_str());
 		return FALSE;
 	}
 	setting.erase(setting.begin());
 
+	int combineCount = 0;
 	for (int i = 0; i < setting.size(); i++)
 	{
 		std::wstring tempName, tempParameter;
@@ -24,8 +30,10 @@ BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure)
 		LPCWSTR parameter = tempParameter.c_str();
 
 		int index = NameToIndex(parameter);
+		ImgStruct * childImage = nullptr;
 		if (index != -1 && index < measure->imgList.size())
 		{
+			childImage = &measure->imgList[index];
 			MagickCore::CompositeOperator compOp = MagickCore::UndefinedCompositeOp;
 			
 			if (_wcsicmp(name, L"ALPHACOMP") == 0)
@@ -318,10 +326,29 @@ BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure)
 					measure->imgList[index].isDelete = TRUE;
 
 					//Extend main image size
-					if (dst.contain.size() < measure->imgList[index].contain.size())
-						dst.contain.size(measure->imgList[index].contain.size());
+					size_t newW = max(
+						measure->imgList[index].contain.columns(), 
+						dst.contain.columns()
+					);
+					size_t newH = max(
+						measure->imgList[index].contain.rows(), 
+						dst.contain.rows()
+					);
 
-					dst.contain.composite(measure->imgList[index].contain, 0, 0, compOp);
+					Magick::Geometry newSize(newW, newH);
+					newSize.aspect(true);
+
+					Magick::Image temp = dst.contain;
+					dst.contain.erase();
+					dst.contain.scale(newSize);
+					dst.contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
+
+					temp.erase();
+					temp.scale(newSize);
+					temp.composite(measure->imgList[index].contain, 0, 0, MagickCore::OverCompositeOp);
+
+					dst.contain.composite(temp, 0, 0, compOp);
+					combineCount += 1;
 				}
 			}
 			catch (Magick::Exception &error_)
@@ -332,5 +359,9 @@ BOOL CreateCombine(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 		}
 	}
-	return TRUE;
+
+	if (combineCount == 0)
+		return FALSE;
+	else
+		return TRUE;
 }

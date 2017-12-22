@@ -22,6 +22,7 @@ ImgType GetType(std::wstring input)
 	else if (_wcsnicmp(inP, L"PATH", 4) == 0)			return PATH;
 	else if (_wcsnicmp(inP, L"CLONE", 5) == 0)			return CLONE;
 	else if (_wcsnicmp(inP, L"ELLIPSE", 7) == 0)		return ELLIPSE;
+	else if (_wcsnicmp(inP, L"POLYGON", 7) == 0)		return POLYGON;
 	else if (_wcsnicmp(inP, L"COMBINE", 7) == 0)		return COMBINE;
 	else if (_wcsnicmp(inP, L"GRADIENT", 8) == 0)		return GRADIENT;
 	else if (_wcsnicmp(inP, L"RECTANGLE", 9) == 0)		return RECTANGLE;
@@ -122,6 +123,7 @@ BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
 		case PATH:
 		case RECTANGLE:
 		case ELLIPSE:
+		case POLYGON:
 			isValid = CreateShape(curImg, imgVec, type, measure);
 			break;
 		case CLONE:
@@ -157,6 +159,26 @@ BOOL GetImage(Measure * measure, std::wstring imageName, BOOL isPush)
 	if (isValid && curImg.contain.isValid())
 	{
 		curImg.colorList = GenColor(curImg.contain, 5);
+
+		if (type == COMBINE || type == CLONE)
+		{
+			Magick::Geometry newBound;
+			try
+			{
+				newBound = curImg.contain.boundingBox();
+				curImg.X = newBound.xOff();
+				curImg.Y = newBound.yOff();
+				curImg.W = newBound.width();
+				curImg.H = newBound.height();
+			}
+			catch (Magick::Exception &error_)
+			{
+				curImg.X = 0;
+				curImg.Y = 0;
+				curImg.W = 0;
+				curImg.H = 0;
+			}
+		}
 
 		for (auto &settingIt : imgVec)
 		{
@@ -633,7 +655,7 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 					tempShadow,
 					(ssize_t)(offsetX - sigma * 2),
 					(ssize_t)(offsetY - sigma * 2),
-					MagickCore::CopyCompositeOp
+					MagickCore::OverCompositeOp
 				);
 			}
 			else
@@ -647,6 +669,7 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 		}
 		else if (_wcsicmp(effect, L"INNERSHADOW") == 0)
 		{
+			//TODO: Cripsy outline. fix it.
 			WSVector dropShadow = SeparateList(parameter, L";", 2, L"");
 			WSVector valList = SeparateParameter(dropShadow[0], 5);
 			double sigma = MathParser::ParseF(valList[1]);
@@ -664,9 +687,9 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 				sigma,
 				0, 0
 			);
+			
 			Magick::Image shadowOnly = image.contain;
-			shadowOnly.composite(temp, (ssize_t) (offsetX - sigma * 4), (ssize_t) (offsetY - sigma * 4), Magick::SrcInCompositeOp);
-
+			shadowOnly.composite(temp, (ssize_t)(offsetX - sigma * 4), (ssize_t)(offsetY - sigma * 4), Magick::SrcInCompositeOp);
 			if (MathParser::ParseI(valList[4]) == 1)
 				image.contain = shadowOnly;
 			else
@@ -990,6 +1013,18 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 			int method = MathParser::ParseI(parameter);
 			if (method > 0 && method <= 9)
 				image.contain.grayscale((Magick::PixelIntensityMethod)method);
+		}
+		else if (_wcsicmp(effect, L"ROLL") == 0)
+		{
+			WSVector valList = SeparateParameter(parameter, 2, L"0");
+			int c = MathParser::ParseI(valList[0]);
+			int r = MathParser::ParseI(valList[1]);
+			if (c < 0)
+				c += (int)image.contain.columns();
+			if (r < 0)
+				r += (int)image.contain.rows();
+
+			image.contain.roll((size_t)c, (size_t)r);
 		}
 		else if (_wcsicmp(effect, L"NEGATE") == 0)
 		{

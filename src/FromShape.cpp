@@ -1,5 +1,12 @@
 #include "MagickMeter.h"
 
+
+double GetLength(double dx, double dy);
+Magick::Coordinate GetProportionPoint(Magick::Coordinate point, double segment,
+	double length, double dx, double dy);
+void DrawRoundedCorner(Magick::VPathList &drawList, Magick::Coordinate &angularPoint,
+	Magick::Coordinate &p1, Magick::Coordinate &p2, double radius, bool start);
+
 struct ShapeEllipse
 {
 	double x = 0;
@@ -10,7 +17,7 @@ struct ShapeEllipse
 	double end = 360;
 	auto Create(void) { 
 		//Because of Antialias, ellipse exceeds its actual size 1 pixel.
-		return Magick::DrawableEllipse(x, y, radiusX - radiusX == 0 ? 0 : 0.5, radiusY - radiusY == 0 ? 0 : 0.5, start, end);
+		return Magick::DrawableEllipse(x, y, radiusX - (radiusX == 0 ? 0 : 0.5), radiusY - (radiusY == 0 ? 0 : 0.5), start, end);
 	}
 };
 
@@ -117,7 +124,7 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		mainShape = e.Create();
 		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
 
-		width = e.x + abs(e.radiusX); 
+		width = e.x + abs(e.radiusX);
 		height = e.y + abs(e.radiusY);
 
 		dst.X = (ssize_t)(e.x - abs(e.radiusX));
@@ -149,7 +156,7 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		if (pSize > 5) r.cornerY = MathParser::ParseF(paraList[5]);
 
 		if (r.cornerX == 0 && r.cornerY == 0)
-			mainShape =  r.Create();
+			mainShape = r.Create();
 		else
 			mainShape = r.CreateRound();
 
@@ -180,11 +187,84 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 		dst.H = (size_t)abs(r.h);
 		break;
 	}
-	/*case POLYGON:
+	case POLYGON:
+	{
 		paraList = SeparateParameter(parameter, NULL);
 		size_t listSize = paraList.size();
-		if ()
-*/
+		if (listSize < 4)
+		{
+			RmLogF(measure->rm, 2, L"Polygon %s: Not enough parameter", parameter.c_str());
+			return FALSE;
+		}
+		double origX = MathParser::ParseF(paraList[0]);
+		double origY = MathParser::ParseF(paraList[1]);
+		double side = round(MathParser::ParseF(paraList[2]));
+		if (side < 3)
+		{
+			RmLogF(measure->rm, 2, L"Polygon %s: Invalide number of sides.", parameter.c_str());
+			return FALSE;
+		}
+		double radiusX = abs(MathParser::ParseF(paraList[3]));
+		double radiusY = radiusX;
+		if (listSize > 4) radiusY = abs(MathParser::ParseF(paraList[4]));
+		double roundCorner = 0;
+		if (listSize > 5) roundCorner = abs(MathParser::ParseF(paraList[5]));
+		double startAngle = 0;
+		if (listSize > 6) startAngle = MathParser::ParseF(paraList[6]) * MagickPI / 180;
+
+		Magick::VPathList p;
+		if (roundCorner != 0)
+		{
+			Magick::Coordinate c1(
+				origX + radiusX * cos(MagickPI2 + startAngle),
+				origY - radiusY * sin(MagickPI2 + startAngle)
+			);
+			double fac = 1 / side;
+			for (int i = 1; i <= side; i++)
+			{
+				double a = (double)i * fac;
+				Magick::Coordinate angPoint(
+					origX + radiusX * cos(a * Magick2PI + MagickPI2 + startAngle),
+					origY - radiusY * sin(a * Magick2PI + MagickPI2 + startAngle)
+				);
+				a = ((double)i + 1.0) * fac;
+				Magick::Coordinate c2(
+					origX + radiusX * cos(a * Magick2PI + MagickPI2 + startAngle),
+					origY - radiusY * sin(a * Magick2PI + MagickPI2 + startAngle)
+				);
+				DrawRoundedCorner(p, angPoint, c1, c2, roundCorner, i == 1);
+				c1 = angPoint;
+			}
+		}
+		else
+		{
+			for (int i = 0; i < side; i++)
+			{
+				double a = (double)i / side;
+				double curX = origX + radiusX * cos(a * Magick2PI + MagickPI2 + startAngle);
+				double curY = origY - radiusY * sin(a * Magick2PI + MagickPI2 + startAngle);
+				RmLogF(measure->rm, 2, L"%f %f", curX, curY);
+				if (i == 0)
+					p.push_back(Magick::PathMovetoAbs(Magick::Coordinate(
+						curX, curY
+					)));
+				else
+					p.push_back(Magick::PathLinetoAbs(Magick::Coordinate(
+						curX, curY
+					)));
+			}
+		}
+		p.push_back(Magick::PathClosePath());
+		mainShape = Magick::DrawablePath(p);
+		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
+		width = origX + radiusX;
+		height = origY + radiusY;
+		dst.X = (ssize_t)round(origX - radiusX);
+		dst.Y = (ssize_t)round(origY - radiusY);
+		dst.W = (size_t)ceil(radiusX * 2);
+		dst.H = (size_t)ceil(radiusY * 2);
+		break;
+	}
 	case PATH:
 	{
 		parameter = RmReadString(measure->rm, parameter.c_str(), L"");
@@ -542,4 +622,64 @@ BOOL CreateShape(ImgStruct &dst, WSVector &setting, ImgType shape, Measure * mea
 	}
 
 	return TRUE;
+}
+
+void DrawRoundedCorner(Magick::VPathList &drawList, Magick::Coordinate &angularPoint,
+	Magick::Coordinate &p1, Magick::Coordinate &p2, double radius, bool start)
+{
+	//Vector 1
+	double dx1 = angularPoint.x() - p1.x();
+	double dy1 = angularPoint.y() - p1.y();
+
+	//Vector 2
+	double dx2 = angularPoint.x() - p2.x();
+	double dy2 = angularPoint.y() - p2.y();
+
+	//Angle between vector 1 and vector 2 divided by 2
+	double angle = (atan2(dy1, dx1) - atan2(dy2, dx2)) / 2;
+
+	// The length of segment between angular point and the
+	// points of intersection with the circle of a given radius
+	double tanR = abs(tan(angle));
+	double segment = radius / tanR;
+
+	//Check the segment
+	double length1 = GetLength(dx1, dy1);
+	double length2 = GetLength(dx2, dy2);
+
+	double length = min(length1, length2) / 2;
+
+	if (segment > length)
+	{
+		segment = length;
+		radius = length * tanR;
+	}
+
+	auto p1Cross = GetProportionPoint(angularPoint, segment, length1, dx1, dy1);
+	auto p2Cross = GetProportionPoint(angularPoint, segment, length2, dx2, dy2);
+
+	if (start) drawList.push_back(Magick::PathMovetoAbs(p1Cross));
+	drawList.push_back(Magick::PathLinetoAbs(p1Cross));
+
+	double diameter = 2 * radius;
+	double degreeFactor = 180 / MagickPI;
+
+	drawList.push_back(Magick::PathArcAbs(Magick::PathArcArgs(
+		radius, radius, 0, false, false, p2Cross.x(), p2Cross.y())));
+}
+
+double GetLength(double dx, double dy)
+{
+	return sqrt(dx * dx + dy * dy);
+}
+
+Magick::Coordinate GetProportionPoint(Magick::Coordinate point, double segment,
+	double length, double dx, double dy)
+{
+	double factor = segment / length;
+
+	return Magick::Coordinate(
+		point.x() - dx * factor,
+		point.y() - dy * factor
+	);
 }

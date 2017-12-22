@@ -1,6 +1,5 @@
 #include "MagickMeter.h"
 
-#define Magick2PI	6.28318530717958647692528676655900576839433879875020
 BOOL CreateConicalGradient(ImgStruct &dst, WSVector &setting, Measure * measure);
 
 BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure)

@@ -4,7 +4,7 @@
 
 ## How to install:
 #### 1. Download ImageMagick: https://www.imagemagick.org/download/binaries/ImageMagick-7.0.7-15-Q16-x64-dll.exe  
-You can download newer version if there's one, but always download **Q16 x64** version.  
+You can download newer version if there's one, but always download **Q16** version.  
 #### 2. Install ImageMagick. You must check `Add application directory to your system path`:
 
 ![InstallStep](https://i.imgur.com/6TbBlTo.png)
@@ -58,3 +58,8 @@ Check out [Wiki](https://github.com/khanhas/MagickMeter/wiki) for more options a
 ![UnderClock](https://i.imgur.com/aTlATjV.png)
 
 ![BitcoinGraph](https://i.imgur.com/r17dnOq.png)
+
+## Community skins:
+### [Blur Player 3](https://eldog-02.deviantart.com/art/Blur-Player-3-721489865) *(by Eldog-02)*
+
+![BlurPlayer3](https://i.imgur.com/JR4r0L1.png)

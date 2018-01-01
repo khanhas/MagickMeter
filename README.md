@@ -3,8 +3,10 @@
 [![GitHub release](https://img.shields.io/github/release/khanhas/MagickMeter/all.svg?colorB=97CA00?label=version)](https://github.com/khanhas/MagickMeter/releases/latest) [![Github All Releases](https://img.shields.io/github/downloads/khanhas/MagickMeter/total.svg?colorB=97CA00)](https://github.com/khanhas/MagickMeter/releases)  
 
 ## How to install:
-#### 1. Download ImageMagick: https://www.imagemagick.org/download/binaries/ImageMagick-7.0.7-15-Q16-x64-dll.exe  
-You can download newer version if there's one, but always download **Q16** version.  
+#### 1. Download ImageMagick: https://www.imagemagick.org/script/download.php 
+
+![Download](https://i.imgur.com/gfjRZxh.png)
+
 #### 2. Install ImageMagick. You must check `Add application directory to your system path`:
 
 ![InstallStep](https://i.imgur.com/6TbBlTo.png)

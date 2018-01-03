@@ -63,6 +63,8 @@ Check out [Wiki](https://github.com/khanhas/MagickMeter/wiki) for more options a
 
 ![BitcoinGraph](https://i.imgur.com/r17dnOq.png)
 
+![RoundedPlayer](https://i.imgur.com/oGGKqyc.png)
+
 ## Community skins:
 ### [Blur Player 3](https://eldog-02.deviantart.com/art/Blur-Player-3-721489865) *(by Eldog-02)*
 

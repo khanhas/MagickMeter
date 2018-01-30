@@ -69,3 +69,7 @@ Check out [Wiki](https://github.com/khanhas/MagickMeter/wiki) for more options a
 ### [Blur Player 3](https://eldog-02.deviantart.com/art/Blur-Player-3-721489865) *(by Eldog-02)*
 
 ![BlurPlayer3](https://i.imgur.com/JR4r0L1.png)
+
+### [Promixity](https://eldog-02.deviantart.com/art/Proximity-727765286) *(by Eldog-02)*
+
+![Promixity](https://i.imgur.com/rrbjjNh.png)

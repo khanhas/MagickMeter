@@ -4,12 +4,11 @@
 #include <vector>
 #include <iomanip>
 #include <windows.h>
-#include <windows.h>
 #include <Strsafe.h>
 #include <Shlwapi.h>
 #include <filesystem>
 #include "Magick++.h"
-#include "..\..\API\RainmeterAPI.h"
+#include "..\API\RainmeterAPI.h"
 
 typedef std::vector<std::wstring> WSVector;
 #define INVISIBLE Magick::Color("transparent")

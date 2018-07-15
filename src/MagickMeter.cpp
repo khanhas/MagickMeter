@@ -1,6 +1,5 @@
 #include "MagickMeter.h"
 #include "MagickCore\magick-type.h"
-#include "..\..\API\RainmeterAPI.h"
 
 ImgType GetType(std::wstring input);
 void ComposeFinalImage(Measure * measure);
@@ -258,6 +257,12 @@ void ComposeFinalImage(Measure * measure)
 	{
 		Magick::Image fallback = ONEPIXEL;
 		fallback.write(measure->outputA);
+	}
+
+	LPCWSTR finishAction = RmReadString(measure->rm, L"OnFinishAction", L"", 1);
+	if (finishAction)
+	{
+		RmExecute(measure->skin, finishAction);
 	}
 }
 
@@ -761,15 +766,8 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 			if (a > 100) a = 100;
 			if (a < 0) a = 0;
 			a /= 100;
-			for (int i = 0; i < image.contain.columns(); i++)
-			{
-				for (int j = 0; j < image.contain.rows(); j++)
-				{
-					Magick::ColorRGB c = image.contain.pixelColor(i, j);
-					c.alpha(c.alpha() * a);
-					image.contain.pixelColor(i, j, c);
-				}
-			}
+
+			image.contain.alpha((unsigned int)(a * QuantumRange));
 		}
 		else if (_wcsicmp(effect, L"SHADE") == 0)
 		{
@@ -788,9 +786,21 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 			{
 				image.contain = image.contain.separate(Magick::RedChannel);
 			}
+			else if (_wcsicmp(parameter, L"GREEN") == 0)
+			{
+				image.contain = image.contain.separate(Magick::GreenChannel);
+			}
 			else if (_wcsicmp(parameter, L"BLUE") == 0)
 			{
 				image.contain = image.contain.separate(Magick::BlueChannel);
+			}
+			else if (_wcsicmp(parameter, L"BLACK") == 0)
+			{
+				image.contain = image.contain.separate(Magick::BlackChannel);
+			}
+			else if (_wcsicmp(parameter, L"OPACITY") == 0)
+			{
+				image.contain = image.contain.separate(Magick::OpacityChannel);
 			}
 		}
 		else if (_wcsicmp(effect, L"MODULATE") == 0)

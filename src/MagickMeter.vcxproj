@@ -142,10 +142,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MagickMeter.h" />
-    <ClInclude Include="resource.h" />
+    <ClInclude Include="version.h" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="MagickMeter.rc" />
+    <ResourceCompile Include="Magickmeter.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

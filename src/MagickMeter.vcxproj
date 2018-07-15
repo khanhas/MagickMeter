@@ -22,14 +22,14 @@
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{C33E34B7-CE75-4D43-B5FC-09AFEF46E4BA}</ProjectGuid>
     <RootNamespace>MagickMeter</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v141</PlatformToolset>
-    <CharacterSet>MultiByte</CharacterSet>
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -70,17 +70,21 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>D:\MagickMeter\x64\</OutDir>
+    <OutDir>..\Publish\x64\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>D:\MagickMeter\x32\</OutDir>
+    <OutDir>..\Publish\x32\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
+      <AdditionalIncludeDirectories>../API/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <Link>
+      <AdditionalDependencies>../API/x64;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -96,15 +100,15 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\Program Files\ImageMagick-7.0.7-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Program Files (x86)\ImageMagick-7.0.8-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>C:\Program Files (x86)\ImageMagick-7.0.7-Q16\lib\CORE_RL_Magick++_.lib;C:\Program Files (x86)\ImageMagick-7.0.7-Q16\lib\CORE_RL_MagickCore_.lib;C:\Program Files (x86)\ImageMagick-7.0.7-Q16\lib\CORE_RL_MagickWand_.lib;..\..\API\x32\Rainmeter.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Program Files\ImageMagick-7.0.7-Q16;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>C:\Program Files (x86)\ImageMagick-7.0.8-Q16\lib\CORE_RL_Magick++_.lib;C:\Program Files (x86)\ImageMagick-7.0.8-Q16\lib\CORE_RL_MagickCore_.lib;C:\Program Files (x86)\ImageMagick-7.0.8-Q16\lib\CORE_RL_MagickWand_.lib;..\API\x32\Rainmeter.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Program Files (x86)\ImageMagick-7.0.8-Q16;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -114,15 +118,17 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\Program Files\ImageMagick-7.0.7-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Program Files\ImageMagick-7.0.8-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <OpenMPSupport>true</OpenMPSupport>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_Magick++_.lib;C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_MagickCore_.lib;C:\Program Files\ImageMagick-7.0.7-Q16\lib\CORE_RL_MagickWand_.lib;..\..\API\x64\Rainmeter.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Program Files\ImageMagick-7.0.7-Q16;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>C:\Program Files\ImageMagick-7.0.8-Q16\lib\CORE_RL_Magick++_.lib;C:\Program Files\ImageMagick-7.0.8-Q16\lib\CORE_RL_MagickCore_.lib;C:\Program Files\ImageMagick-7.0.8-Q16\lib\CORE_RL_MagickWand_.lib;..\API\x64\Rainmeter.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Program Files\ImageMagick-7.0.8-Q16;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <EmbedManagedResourceFile>./MagickMeter.rc;%(EmbedManagedResourceFile)</EmbedManagedResourceFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

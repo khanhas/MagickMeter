@@ -1,0 +1,8 @@
+configure: . ./task.ps1; configure
+listsource: . ./task.ps1; listsource
+build: . ./task.ps1; build
+clean: Remove-Item -Recurse ./build/
+cleanAll: Remove-Item -Recurse ./Publish/; Remove-Item -Recurse ./build/
+fresh: psm configure; psm build
+copy: Copy-Item ".\build\x64\magickmeter.dll" "$env:APPDATA\Rainmeter\Plugins"
+killrm: Stop-Process -name rainmeter

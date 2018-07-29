@@ -53,6 +53,11 @@ PLUGIN_EXPORT void Initialize(void** data, void* rm)
 
 PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
 {
+	if (RmReadInt(rm, L"Disabled", 0) == 1 || RmReadInt(rm, L"Paused", 0) == 1)
+	{
+		return;
+	}
+
 	Measure* measure = (Measure*)data;
 
 	std::wstring imgName = L"Image";
@@ -72,7 +77,7 @@ PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
 			break;
 		imgName = L"Image" + std::to_wstring(++inpCount);
 	}
-	
+
 	ComposeFinalImage(measure);
 }
 
@@ -692,7 +697,7 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 				sigma,
 				0, 0
 			);
-			
+
 			Magick::Image shadowOnly = image.contain;
 			shadowOnly.composite(temp, (ssize_t)(offsetX - sigma * 4), (ssize_t)(offsetY - sigma * 4), Magick::SrcInCompositeOp);
 			if (MathParser::ParseI(valList[4]) == 1)
@@ -832,7 +837,7 @@ BOOL ParseEffect(Measure * measure, ImgStruct &image, std::wstring name, std::ws
 		{
 			WSVector valList = SeparateParameter(parameter, 3);
 			Magick::Geometry newSize(
-				MathParser::ParseI(valList[0]), 
+				MathParser::ParseI(valList[0]),
 				MathParser::ParseI(valList[1])
 			);
 

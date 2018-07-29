@@ -1,0 +1,19 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2015
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "magickmeter", "magickmeter.vcxproj", "{AF13C838-545D-EA26-4852-12741B4A2650}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|x64 = Release|x64
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AF13C838-545D-EA26-4852-12741B4A2650}.Release|x64.ActiveCfg = Release|x64
+		{AF13C838-545D-EA26-4852-12741B4A2650}.Release|x64.Build.0 = Release|x64
+		{AF13C838-545D-EA26-4852-12741B4A2650}.Release|Win32.ActiveCfg = Release|Win32
+		{AF13C838-545D-EA26-4852-12741B4A2650}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -6,3 +6,6 @@ cleanAll: Remove-Item -Recurse ./Publish/; Remove-Item -Recurse ./build/
 fresh: psm configure; psm build
 copy: Copy-Item ".\build\x64\magickmeter.dll" "$env:APPDATA\Rainmeter\Plugins"
 killrm: Stop-Process -name rainmeter
+# Specify 3 parameters `major minor patch`. Example: psm bump 1 5 0
+bump: . ./task.ps1; bumpVersion
+dist: . ./task.ps1; dist

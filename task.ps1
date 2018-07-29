@@ -10,11 +10,11 @@ function listSource {
         Foreach-Object { $_.FullName.Replace("\", "/") }
 }
 
-function build() {
-    # Build x64
+function buildx64() {
     &$msbuild /p:Platform=x64;
+}
 
-    #Build x86
+function buildx86() {
     &$msbuild /p:Platform=Win32
 }
 

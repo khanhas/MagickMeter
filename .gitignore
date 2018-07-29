@@ -33,6 +33,6 @@
 
 Publish/
 src/.vs
-src/x64
-src/Release
-*.aps
+Release
+gyp
+build

@@ -274,7 +274,7 @@ namespace MathParser {
 		return error;
 	}
 
-	double ParseF(std::wstring input)
+	double ParseDouble(std::wstring input)
 	{
 		double output = 0.0;
 		const WCHAR* error = CheckedParse(input, &output);
@@ -283,16 +283,30 @@ namespace MathParser {
 		return output;
 	}
 
-	int ParseI(std::wstring input)
+	int ParseInt(std::wstring input)
 	{
-		double output = ParseF(input);
+		double output = ParseDouble(input);
 		round(0, &output, &output);
 		return (int)output;
 	}
 
-	BOOL ParseB(std::wstring input)
+    size_t ParseSizeT(std::wstring input)
+    {
+        double output = ParseDouble(input);
+        round(0, &output, &output);
+        return static_cast<size_t>(output);
+    }
+
+    ssize_t ParseSSizeT(std::wstring input)
+    {
+        double output = ParseDouble(input);
+        round(0, &output, &output);
+        return static_cast<ssize_t>(output);
+    }
+
+	BOOL ParseBool(std::wstring input)
 	{
-		int num = ParseI(input);
+		int num = ParseInt(input);
 		return num == 1;
 	}
 

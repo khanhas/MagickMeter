@@ -1,275 +1,285 @@
 #include "MagickMeter.h"
+const enum TextAlign {
+    INVALIDALIGN,
 
-BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
+    LEFTCENTER,
+    LEFTBOTTOM,
+
+    RIGHTCENTER,
+    RIGHTBOTTOM,
+
+    CENTERCENTER,
+    CENTERBOTTOM,
+
+    LEFTTOP,
+    RIGHTTOP,
+    CENTERTOP,
+};
+
+BOOL Measure::CreateText(std::wstring text, WSVector &config, ImgContainer &out)
 {
-	std::wstring text = setting[0];
-	setting.erase(setting.begin());
+    Magick::Image tempImg = ONEPIXEL;
 
-	dst.contain.fontPointsize(40); //40 * 75% = 30 (default font size)
+    tempImg.fontPointsize(40); //40 * 75% = 30 (default font size)
+    tempImg.fillColor(Magick::Color("white"));
+    TextAlign align = LEFTTOP;
 
 	double xPos = 0;
 	double yPos = 0;
 	double skewX = 0;
 	double skewY = 0;
-	int align = 7;
-	double angle = 0;
-	int strokeAlign = 0;
 	double strokeWidth = 0;
-	Magick::Color strokeColor = Magick::Color("black");
-	dst.contain.fillColor(Magick::Color("white"));
-	Magick::GravityType grav = Magick::NorthWestGravity;
+    Magick::Color strokeColor = Magick::Color("black");
 
 	Magick::Geometry customCanvas;
 	size_t clipW = 0;
 	size_t clipH = 0;
 	size_t clipLine = 0;
-	for (int i = 0; i < setting.size(); i++)
+	for (auto &option : config)
 	{
-		std::wstring tempName, parameter;
-		GetNamePara(setting[i], tempName, parameter);
-		ParseInternalVariable(measure, parameter, dst);
+        if (option.empty())
+            continue;
+
+        std::wstring tempName;
+        std::wstring tempPara;
+		Utils::GetNamePara(option, tempName, tempPara);
+		ParseInternalVariable(tempPara, out);
 
 		LPCWSTR name = tempName.c_str();
-		BOOL isSetting = FALSE;
+        LPCWSTR parameter = tempPara.c_str();
+
+		BOOL isValidOption = FALSE;
 		if (_wcsicmp(name, L"CANVAS") == 0)
 		{
-			WSVector valList = SeparateList(parameter, L",", 2);
-			int tempW = MathParser::ParseI(valList[0]);
-			int tempH = MathParser::ParseI(valList[1]);
+			WSVector valList = Utils::SeparateList(parameter, L",", 2);
+            const size_t width = MathParser::ParseSizeT(valList[0]);
+            const size_t height = MathParser::ParseSizeT(valList[1]);
 
-			if (tempW <= 0 || tempH <= 0)
+			if (width <= 0 || height <= 0)
 				RmLog(2, L"Invalid Width or Height value. Default canvas is used.");
 			else
 			{
-				customCanvas = Magick::Geometry((size_t)tempW, (size_t)tempH);
+				customCanvas = Magick::Geometry(width, height);
 				customCanvas.aspect(true);
 			}
-			isSetting = TRUE;
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"OFFSET") == 0)
 		{
-			WSVector valList = SeparateList(parameter, L",", 2);
-			xPos = MathParser::ParseF(valList[0]);
-			yPos = MathParser::ParseF(valList[1]);
-			isSetting = TRUE;
+			WSVector valList = Utils::SeparateList(tempPara, L",", 2);
+			xPos = MathParser::ParseDouble(valList[0]);
+			yPos = MathParser::ParseDouble(valList[1]);
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"ANTIALIAS") == 0)
 		{
-			dst.contain.textAntiAlias(MathParser::ParseB(parameter));
-			isSetting = TRUE;
+			tempImg.textAntiAlias(MathParser::ParseBool(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"COLOR") == 0)
 		{
-			dst.contain.fillColor(GetColor(parameter));
-			isSetting = TRUE;
+			tempImg.fillColor(Utils::ParseColor(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"BACKGROUNDCOLOR") == 0)
 		{
-			dst.contain.textUnderColor(GetColor(parameter));
-			isSetting = TRUE;
+			tempImg.textUnderColor(Utils::ParseColor(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"FACE") == 0)
 		{
-			std::wstring para = parameter;
-			if (para.find(L"@") == 0) //Font file in @Resource folder
+            // Font file in @Resource folder
+			if (tempPara.find(L"@") == 0)
 			{
-				std::wstring fontDir = RmReplaceVariables(measure->rm, L"#@#Fonts\\");
-				fontDir += para.substr(1);
+				std::wstring fontDir = RmReplaceVariables(rm, L"#@#Fonts\\");
+				fontDir += tempPara.substr(1);
 				if (std::experimental::filesystem::exists(fontDir))
-					dst.contain.font(ws2s(fontDir));
+					tempImg.font(Utils::WStringToString(fontDir));
 			}
-			else if (std::experimental::filesystem::exists(parameter)) //Direct path to font file
+            // Direct path to font file
+			else if (std::experimental::filesystem::exists(parameter))
 			{
-				dst.contain.font(ws2s(parameter));
+				tempImg.font(Utils::WStringToString(tempPara));
 			}
-			else //Installed font family name
+            // Installed font family name
+			else
 			{
-				dst.contain.fontFamily(ws2s(parameter));
+				tempImg.fontFamily(Utils::WStringToString(tempPara));
 			}
-			isSetting = TRUE;
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"SIZE") == 0)
 		{
-			dst.contain.fontPointsize(MathParser::ParseF(parameter) * 100 / 75); //Rm font size = 75% ours.
-			isSetting = TRUE;
+            // Rainmeter font size = 75% ours.
+			tempImg.fontPointsize(MathParser::ParseDouble(tempPara) * 100 / 75);
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"WEIGHT") == 0)
 		{
-			dst.contain.fontWeight(MathParser::ParseI(parameter));
-			isSetting = TRUE;
+			tempImg.fontWeight(MathParser::ParseInt(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"STYLE") == 0)
 		{
-			if (_wcsicmp(parameter.c_str(), L"NORMAL") == 0)
-				dst.contain.fontStyle(Magick::NormalStyle);
+			if (_wcsicmp(parameter, L"NORMAL") == 0)
+				tempImg.fontStyle(Magick::NormalStyle);
 
-			else if (_wcsicmp(parameter.c_str(), L"ITALIC") == 0)
-				dst.contain.fontStyle(Magick::ItalicStyle);
+			else if (_wcsicmp(parameter, L"ITALIC") == 0)
+				tempImg.fontStyle(Magick::ItalicStyle);
 
-			else if (_wcsicmp(parameter.c_str(), L"OBLIQUE") == 0)
-				dst.contain.fontStyle(Magick::ObliqueStyle);
+			else if (_wcsicmp(parameter, L"OBLIQUE") == 0)
+				tempImg.fontStyle(Magick::ObliqueStyle);
 			else
 			{
-				dst.contain.fontStyle(Magick::NormalStyle);
+				tempImg.fontStyle(Magick::NormalStyle);
 				RmLog(2, L"Invalid Text Style. Normal style is applied.");
 			}
-			isSetting = TRUE;
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"CASE") == 0)
 		{
-			WCHAR* srcAndDest = &text[0];
-			int strAndDestLen = (int)text.length();
-			if (_wcsicmp(parameter.c_str(), L"UPPER") == 0)
-				LCMapString(LOCALE_USER_DEFAULT, LCMAP_UPPERCASE, srcAndDest, strAndDestLen, srcAndDest, strAndDestLen);
-			else if (_wcsicmp(parameter.c_str(), L"LOWER") == 0)
-				LCMapString(LOCALE_USER_DEFAULT, LCMAP_LOWERCASE, srcAndDest, strAndDestLen, srcAndDest, strAndDestLen);
-			else if (_wcsicmp(parameter.c_str(), L"PROPER") == 0)
-				LCMapString(LOCALE_USER_DEFAULT, LCMAP_TITLECASE, srcAndDest, strAndDestLen, srcAndDest, strAndDestLen);
-			else if (_wcsicmp(parameter.c_str(), L"NONE") == 0)
+            WCHAR* textAddress = &text[0];
+            const int textLen = static_cast<int>(text.length());
+			if (_wcsicmp(parameter, L"UPPER") == 0)
+				LCMapString(LOCALE_USER_DEFAULT, LCMAP_UPPERCASE, textAddress, textLen, textAddress, textLen);
+			else if (_wcsicmp(parameter, L"LOWER") == 0)
+				LCMapString(LOCALE_USER_DEFAULT, LCMAP_LOWERCASE, textAddress, textLen, textAddress, textLen);
+			else if (_wcsicmp(parameter, L"PROPER") == 0)
+				LCMapString(LOCALE_USER_DEFAULT, LCMAP_TITLECASE, textAddress, textLen, textAddress, textLen);
+			else if (_wcsicmp(parameter, L"NONE") == 0)
 			{
 			}
 			else
-				RmLogF(measure->rm, 2, L"%s is invalid Text Case.", parameter);
+				RmLogF(rm, 2, L"%s is invalid Text Case.", parameter);
 
-			isSetting = TRUE;
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"LINESPACING") == 0)
 		{
-			dst.contain.textInterlineSpacing(MathParser::ParseF(parameter));
-			isSetting = TRUE;
+			tempImg.textInterlineSpacing(MathParser::ParseDouble(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"WORDSPACING") == 0)
 		{
-			dst.contain.textInterwordSpacing(MathParser::ParseF(parameter));
-			isSetting = TRUE;
+			tempImg.textInterwordSpacing(MathParser::ParseDouble(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"TEXTKERNING") == 0)
 		{
-			dst.contain.textKerning(MathParser::ParseF(parameter));
-			isSetting = TRUE;
+			tempImg.textKerning(MathParser::ParseDouble(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"ALIGN") == 0)
 		{
-			if (_wcsnicmp(parameter.c_str(), L"LEFTCENTER", 10) == 0)
-				align = 1;
-			else if (_wcsnicmp(parameter.c_str(), L"LEFTBOTTOM", 10) == 0)
-				align = 2;
-			else if (_wcsnicmp(parameter.c_str(), L"RIGHTCENTER", 11) == 0)
-				align = 3;
-			else if (_wcsnicmp(parameter.c_str(), L"RIGHTBOTTOM", 11) == 0)
-				align = 4;
-			else if (_wcsnicmp(parameter.c_str(), L"CENTERCENTER", 11) == 0)
-				align = 5;
-			else if (_wcsnicmp(parameter.c_str(), L"CENTERBOTTOM", 12) == 0)
-				align = 6;
-			else if (_wcsnicmp(parameter.c_str(), L"LEFTTOP", 7) == 0 || _wcsnicmp(parameter.c_str(), L"LEFT", 4) == 0)
-				align = 7;
-			else if (_wcsnicmp(parameter.c_str(), L"RIGHTTOP", 8) == 0 || _wcsnicmp(parameter.c_str(), L"RIGHT", 5) == 0)
-				align = 8;
-			else if (_wcsnicmp(parameter.c_str(), L"CENTERTOP", 9) == 0 || _wcsnicmp(parameter.c_str(), L"CENTER", 6) == 0)
-				align = 9;
+			if (_wcsnicmp(parameter, L"LEFTCENTER", 10) == 0)
+				align = LEFTCENTER;
+			else if (_wcsnicmp(parameter, L"LEFTBOTTOM", 10) == 0)
+				align = LEFTBOTTOM;
+			else if (_wcsnicmp(parameter, L"RIGHTCENTER", 11) == 0)
+				align = RIGHTCENTER;
+			else if (_wcsnicmp(parameter, L"RIGHTBOTTOM", 11) == 0)
+				align = RIGHTBOTTOM;
+			else if (_wcsnicmp(parameter, L"CENTERCENTER", 11) == 0)
+				align = CENTERCENTER;
+			else if (_wcsnicmp(parameter, L"CENTERBOTTOM", 12) == 0)
+				align = CENTERBOTTOM;
+			else if (_wcsnicmp(parameter, L"LEFTTOP", 7) == 0 || _wcsnicmp(parameter, L"LEFT", 4) == 0)
+				align = LEFTTOP;
+			else if (_wcsnicmp(parameter, L"RIGHTTOP", 8) == 0 || _wcsnicmp(parameter, L"RIGHT", 5) == 0)
+				align = RIGHTTOP;
+			else if (_wcsnicmp(parameter, L"CENTERTOP", 9) == 0 || _wcsnicmp(parameter, L"CENTER", 6) == 0)
+				align = CENTERTOP;
 			else
 				RmLog(2, L"Invalid Align value. Anchor Left is applied");
 
-			isSetting = TRUE;
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"SKEW") == 0)
 		{
-			WSVector valList = SeparateList(parameter, L",", 2);
-			skewX = MathParser::ParseF(valList[0]);
-			dst.contain.transformSkewX(skewX);
+			WSVector valList = Utils::SeparateList(tempPara, L",", 2);
+			skewX = MathParser::ParseDouble(valList[0]);
+			tempImg.transformSkewX(skewX);
 
-			skewY = MathParser::ParseF(valList[1]);
-			dst.contain.transformSkewY(skewY);
-			isSetting = TRUE;
+			skewY = MathParser::ParseDouble(valList[1]);
+			tempImg.transformSkewY(skewY);
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"DIRECTION") == 0)
 		{
-			Magick::DirectionType dir = MagickCore::LeftToRightDirection;
-			if (_wcsicmp(parameter.c_str(), L"LEFTTORIGHT") == 0)
-				dir = MagickCore::LeftToRightDirection;
-			else if (_wcsicmp(parameter.c_str(), L"RIGHTTOLEFT") == 0)
-				dir = MagickCore::RightToLeftDirection;
-			else
-				RmLog(2, L"Invalid Direction value. Left to Right direction is applied");
+			if (_wcsicmp(parameter, L"LEFTTORIGHT") == 0)
+            {
+                tempImg.textDirection(Magick::LeftToRightDirection);
 
-			dst.contain.textDirection(dir);
-			isSetting = TRUE;
+            }
+            else if (_wcsicmp(parameter, L"RIGHTTOLEFT") == 0)
+            {
+                tempImg.textDirection(Magick::RightToLeftDirection);
+            }
+            else
+            {
+                tempImg.textDirection(Magick::LeftToRightDirection);
+                RmLog(2, L"Invalid Direction value. Left to Right direction is applied");
+            }
+
+			isValidOption = TRUE;
 		}
 		if (_wcsicmp(name, L"STROKECOLOR") == 0)
 		{
-			dst.contain.strokeColor(GetColor(parameter));
-			isSetting = TRUE;
+			tempImg.strokeColor(Utils::ParseColor(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"STROKEWIDTH") == 0)
 		{
-			strokeWidth = MathParser::ParseF(parameter);
-			isSetting = TRUE;
+			strokeWidth = MathParser::ParseDouble(tempPara);
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"DENSITY") == 0)
 		{
-			dst.contain.density(MathParser::ParseF(parameter));
-			isSetting = TRUE;
+			tempImg.density(MathParser::ParseDouble(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"CLIPSTRINGW") == 0)
 		{
-			clipW = (size_t)abs(MathParser::ParseI(parameter));
-			isSetting = TRUE;
+			clipW = (size_t)abs(MathParser::ParseInt(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"CLIPSTRINGH") == 0)
 		{
-			clipH = (size_t)abs(MathParser::ParseI(parameter));
-			isSetting = TRUE;
+			clipH = (size_t)abs(MathParser::ParseInt(tempPara));
+			isValidOption = TRUE;
 		}
 		else if (_wcsicmp(name, L"CLIPSTRINGLINE") == 0)
 		{
-			clipLine = (size_t)abs(MathParser::ParseI(parameter));
-			isSetting = TRUE;
-		}
-		/*else if (_wcsicmp(name, L"STROKEALIGN") == 0)
-		{
-		if (_wcsicmp(parameter.c_str(), L"CENTER") == 0)
-		strokeAlign = 0;
-
-		else if (_wcsicmp(parameter.c_str(), L"OUTSIDE") == 0)
-		strokeAlign = 1;
-
-		else if (_wcsicmp(parameter.c_str(), L"INSIDE") == 0)
-		strokeAlign = 2;
-		else
-		{
-		strokeAlign = 0;
-		RmLog(2, L"Invalid StrokeAlign value. Center align is applied.");
+			clipLine = (size_t)abs(MathParser::ParseInt(tempPara));
+			isValidOption = TRUE;
 		}
 
-		isSetting = TRUE;
-		}*/
-		if (isSetting)
-			setting[i] = L"";
+		if (isValidOption)
+			option.clear();
 	}
 
 	try
 	{
 		Magick::TypeMetric metric;
 
-		dst.contain.fontTypeMetricsMultiline(ws2s(text), &metric);
+		tempImg.fontTypeMetricsMultiline(Utils::WStringToString(text), &metric);
 
 		if (clipW != 0)
 		{
 			if (metric.textWidth() > clipW)
 			{
-				WSVector words = SeparateList(text, L" ", NULL);
+				WSVector words = Utils::SeparateList(text, L" ", NULL);
 
 				WSVector lines;
-				UINT offset = 1;
-				UINT startLine = 0;
+				size_t offset = 1;
+                size_t startLine = 0;
 				while (startLine + offset <= words.size())
 				{
 					std::wstring curLine = L"";
-					for (UINT j = startLine; j < startLine + offset; j++)
+					for (size_t j = startLine; j < startLine + offset; j++)
 						curLine += words[j] + L" ";
 
-					dst.contain.fontTypeMetricsMultiline(ws2s(curLine), &metric);
+					tempImg.fontTypeMetricsMultiline(Utils::WStringToString(curLine), &metric);
 					if ((size_t)ceil(metric.textWidth()) < clipW)
 						offset++;
 					else
@@ -286,7 +296,7 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 								{
 									oldw = w;
 									w += addLine[c];
-									dst.contain.fontTypeMetricsMultiline(ws2s(w + L"-"), &metric);
+									tempImg.fontTypeMetricsMultiline(Utils::WStringToString(w + L"-"), &metric);
 									if (metric.textWidth() > clipW)
 									{
 										w = L"";
@@ -299,12 +309,16 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 									}
 								}
 							}
-							else
-								offset++;
+                            else
+                            {
+                                offset++;
+                            }
 						}
-						else
-							for (UINT j = startLine; j < startLine + offset - 1; j++)
-								addLine += words[j] + L" ";
+                        else
+                        {
+                            for (UINT j = startLine; j < startLine + offset - 1; j++)
+                                addLine += words[j] + L" ";
+                        }
 
 						lines.push_back(addLine);
 						startLine += offset - 1;
@@ -319,7 +333,7 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 					lines.push_back(addLine);
 				}
 				if (lines.size() >= 1)
-				text = lines[0];
+					text = lines[0];
 				for (size_t i = 1; i < lines.size(); i++)
 					text += L"\n" + lines[i];
 			}
@@ -328,38 +342,45 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 		if (clipH != 0)
 		{
-			WSVector lineList = SeparateList(text, L"\n", NULL);
-			size_t listSize = lineList.size();
+			WSVector lineList = Utils::SeparateList(text, L"\n", NULL);
+			const size_t listSize = lineList.size();
 			if (listSize > 1)
 			{
 				std::wstring curText = lineList[0];
 				size_t lastLine = 0;
 				for (size_t i = 1; i < listSize; i++)
 				{
-					dst.contain.fontTypeMetricsMultiline(ws2s(curText + L"\n" + lineList[i]), &metric);
+					tempImg.fontTypeMetricsMultiline(Utils::WStringToString(curText + L"\n" + lineList[i]), &metric);
 					if (metric.textHeight() <= clipH)
 					{
 						curText += L"\n" + lineList[i];
 						lastLine = i;
 					}
-					else
-						break;
+                    else
+                    {
+                        break;
+                    }
 				}
 
 				if (lastLine != (listSize - 1))
 				{
 					curText += L"...";
-					if (clipW != 0)
-						for (size_t i = curText.length() - 1; i >= 2; i--)
-						{
-							curText[i] = L'.';
-							curText[i-1] = L'.';
-							curText[i-2] = L'.';
-							if (i != curText.length() - 1) curText.pop_back();
-							dst.contain.fontTypeMetricsMultiline(ws2s(curText), &metric);
-							if (metric.textWidth() <= clipW)
-								break;
-						}
+                    if (clipW != 0)
+                    {
+                        for (size_t i = curText.length() - 1; i >= 2; i--)
+                        {
+                            curText[i] = L'.';
+                            curText[i - 1] = L'.';
+                            curText[i - 2] = L'.';
+                            if (i != curText.length() - 1)
+                                curText.pop_back();
+
+                            tempImg.fontTypeMetricsMultiline(Utils::WStringToString(curText), &metric);
+
+                            if (metric.textWidth() <= clipW)
+                                break;
+                        }
+                    }
 					text = curText;
 				}
 			}
@@ -367,8 +388,8 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 		if (clipLine != 0)
 		{
-			WSVector lineList = SeparateList(text, L"\n", NULL);
-			size_t listSize = lineList.size();
+			WSVector lineList = Utils::SeparateList(text, L"\n", NULL);
+			const size_t listSize = lineList.size();
 			if (listSize > 1 && clipLine < listSize)
 			{
 				std::wstring curText = lineList[0];
@@ -376,173 +397,117 @@ BOOL CreateText(ImgStruct &dst, WSVector &setting, Measure * measure)
 					curText += L"\n" + lineList[i];
 
 				curText += L"...";
-				if (clipW != 0)
-					for (size_t i = curText.length() - 1; i >= 2; i--)
-					{
-						if (i != curText.length() - 1)
-						{
-							curText.pop_back();
-							curText[i] = L'.';
-							curText[i - 1] = L'.';
-							curText[i - 2] = L'.';
-						}
+                if (clipW != 0)
+                {
+                    for (size_t i = curText.length() - 1; i >= 2; i--)
+                    {
+                        if (i != curText.length() - 1)
+                        {
+                            curText.pop_back();
+                            curText[i] = L'.';
+                            curText[i - 1] = L'.';
+                            curText[i - 2] = L'.';
+                        }
 
-						dst.contain.fontTypeMetricsMultiline(ws2s(curText), &metric);
-						if (metric.textWidth() <= clipW)
-							break;
-					}
+                        tempImg.fontTypeMetricsMultiline(Utils::WStringToString(curText), &metric);
+                        if (metric.textWidth() <= clipW)
+                            break;
+                    }
+                }
 				text = curText;
 			}
 		}
 
-		dst.contain.fontTypeMetricsMultiline(ws2s(text), &metric);
+		tempImg.fontTypeMetricsMultiline(Utils::WStringToString(text), &metric);
 
-		dst.contain.strokeWidth(strokeWidth);
+		tempImg.strokeWidth(strokeWidth);
 
-		//Some fonts have glyphs that overflows normal zone
-		//and fontTypeMetric doesn't detect that.
-		//So we have to offset a textHeight() amount.
+		// Some fonts have glyphs that overflows normal zone
+		// and fontTypeMetric doesn't detect that.
+		// So we have to offset a textHeight() amount.
 		Magick::Geometry tempSize(
 			(size_t)ceil(metric.textWidth() + strokeWidth / 2 + metric.textHeight() * 2),
 			(size_t)ceil(metric.textHeight() + strokeWidth / 2 + metric.textHeight() * 2),
-			(ssize_t)ceil(metric.textHeight()), (ssize_t)ceil(metric.textHeight())
+			(ssize_t)ceil(metric.textHeight()),
+            (ssize_t)ceil(metric.textHeight())
 		);
 		tempSize.aspect(true);
 
-		Magick::Image tempImg = dst.contain;
-
+        Magick::GravityType grav = Magick::NorthWestGravity;
 		switch (align)
 		{
-		case 3:
-		case 4:
-		case 8:
+        case RIGHTCENTER:
+        case RIGHTBOTTOM:
+        case RIGHTTOP:
 			grav = Magick::NorthEastGravity;
 			break;
-		case 5:
-		case 6:
-		case 9:
+        case CENTERCENTER:
+        case CENTERBOTTOM:
+        case CENTERTOP:
 			grav = Magick::NorthGravity;
 			break;
 		}
-		tempImg.scale(tempSize);
-		tempImg.annotate(ws2s(text), tempSize, grav);
+
+        tempImg.scale(tempSize);
+		tempImg.annotate(Utils::WStringToString(text), tempSize, grav);
 		tempImg.crop(tempImg.boundingBox());
 
-		dst.W = (size_t)ceil(tempImg.columns());
-		dst.H = (size_t)ceil(tempImg.rows());
+		out.W = tempImg.columns();
+		out.H = tempImg.rows();
 
 		switch (align)
 		{
-		case 1:
+		case LEFTCENTER:
 			yPos -= tempImg.rows() / 2;
 			break;
-		case 2:
+		case LEFTBOTTOM:
 			yPos -= tempImg.rows();
 			break;
-		case 3:
+		case RIGHTCENTER:
 			xPos -= tempImg.columns();
 			yPos -= tempImg.rows() / 2;
 			break;
-		case 4:
+		case RIGHTBOTTOM:
 			xPos -= tempImg.columns();
 			yPos -= tempImg.rows();
 			break;
-		case 5:
+		case CENTERCENTER:
 			xPos -= tempImg.columns() / 2;
 			yPos -= tempImg.rows() / 2;
 			break;
-		case 6:
+		case CENTERBOTTOM:
 			xPos -= tempImg.columns() / 2;
 			yPos -= tempImg.rows();
 			break;
-		case 8:
+		case RIGHTTOP:
 			xPos -= tempImg.columns();
 			break;
-		case 9:
+		case CENTERTOP:
 			xPos -= tempImg.columns() / 2;
 			break;
 		}
 
-		dst.X = (ssize_t)round(xPos);
-		dst.Y = (ssize_t)round(yPos);
+		out.X = (ssize_t)round(xPos);
+		out.Y = (ssize_t)round(yPos);
 
 		if (!customCanvas.isValid())
 		{
 			customCanvas = Magick::Geometry(
-				dst.X + dst.W,
-				dst.Y + dst.H
+				out.X + out.W,
+				out.Y + out.H
 			);
 			customCanvas.aspect(true);
 		}
 
-		dst.contain.scale(customCanvas);
+        out.img.scale(customCanvas);
 
-		dst.contain.composite(tempImg, dst.X, dst.Y, MagickCore::OverCompositeOp);
+        out.img.composite(tempImg, out.X, out.Y, Magick::OverCompositeOp);
 	}
 	catch (Magick::Exception &error_)
 	{
-		error2pws(error_);
+		LogError(error_);
 		return FALSE;
 	}
 
 	return TRUE;
 }
-
-/*STROKE ALIGN
-Magick::TypeMetric metrics;
-if (strokeWidth == 0)
-{
-dst.contain.fontTypeMetricsMultiline(ws2s(text), &metrics);
-Magick::Geometry newSize(
-(size_t)(metrics.textWidth() + 200),
-(size_t)(metrics.textHeight() + 200)
-);
-newSize.aspect(true);
-dst.contain.resize(newSize);
-
-dst.contain.annotate(ws2s(text), Magick::Geometry(0, 0, 200, 200));
-}
-else if (strokeWidth != 0 && strokeAlign != 0)
-{
-dst.contain.strokeWidth(strokeWidth * 2);
-dst.contain.strokeColor(strokeColor);
-
-dst.contain.fontTypeMetricsMultiline(ws2s(text), &metrics);
-
-Magick::Geometry newSize(
-(size_t)(metrics.textWidth()),
-(size_t)(metrics.textHeight())
-);
-newSize.aspect(true);
-dst.contain.resize(newSize);
-
-dst.contain.annotate(ws2s(text), newSize, Magick::NorthGravity);
-Magick::Image temp = dst.contain;
-temp.strokeColor(INVISIBLE);
-temp.annotate(ws2s(text), newSize, Magick::NorthGravity);
-
-if (strokeAlign == 1)
-{
-dst.contain.composite(temp, 0, 0, MagickCore::OverCompositeOp);
-}
-else if (strokeAlign == 2)
-{
-dst.contain.composite(temp, 0, 0, MagickCore::CopyAlphaCompositeOp);
-}
-}
-else
-{
-dst.contain.strokeWidth(strokeWidth);
-dst.contain.strokeColor(strokeColor);
-dst.contain.fontTypeMetricsMultiline(ws2s(text), &metrics);
-
-Magick::Geometry newSize(
-(size_t)(metrics.textWidth()),
-(size_t)(metrics.textHeight())
-);
-newSize.aspect(true);
-dst.contain.resize(newSize);
-
-dst.contain.annotate(ws2s(text), newSize, Magick::NorthGravity);
-
-}*/

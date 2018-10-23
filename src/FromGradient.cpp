@@ -1,37 +1,44 @@
 #include "MagickMeter.h"
+#include <sstream>
 
-BOOL CreateConicalGradient(ImgStruct &dst, WSVector &setting, Measure * measure);
+BOOL CreateConicalGradient(Measure* measure, WSVector &config, ImgContainer &out);
 
-BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
+BOOL Measure::CreateGradient(LPCWSTR gradType, WSVector &config, ImgContainer &out)
 {
-
-	MagickCore::GradientType type;
-	if (_wcsicmp(setting[0].c_str(), L"LINEAR") == 0)
-		type = MagickCore::LinearGradient;
-	else if (_wcsicmp(setting[0].c_str(), L"RADIAL") == 0)
-		type = MagickCore::RadialGradient;
-	else if (_wcsicmp(setting[0].c_str(), L"CONICAL") == 0)
+	MagickCore::GradientType type = MagickCore::UndefinedGradient;
+    if (_wcsicmp(gradType, L"LINEAR") == 0)
+    {
+        type = MagickCore::LinearGradient;
+    }
+    else if (_wcsicmp(gradType, L"RADIAL") == 0)
+    {
+        type = MagickCore::RadialGradient;
+    }
+	else if (_wcsicmp(gradType, L"CONICAL") == 0)
 	{
-		return CreateConicalGradient(dst, setting, measure);
+		return CreateConicalGradient(this, config, out);
 	}
 	else
 	{
-		RmLogF(measure->rm, 2, L"%s is invalid Gradient type.", setting[0].c_str());
+		RmLogF(rm, 2, L"%s is invalid Gradient type. Valid types: Linear, Radical, Conical.", config[0].c_str());
 		return FALSE;
 	}
-	setting.erase(setting.begin());
+
 	MagickCore::SpreadMethod spread = MagickCore::PadSpread;
 
-	MagickCore::StopInfo * stopColors = { 0 };
-	size_t totalColor = 0;
+    std::vector <MagickCore::StopInfo> colorMap;
+    size_t totalColor = 0;
 
 	Magick::Geometry customCanvas = Magick::Geometry(600, 600);
 
-	for (int i = 0; i < setting.size(); i++)
+	for (auto &option : config)
 	{
-		std::wstring tempName, parameter;
-		GetNamePara(setting[i], tempName, parameter);
-		ParseInternalVariable(measure, parameter, dst);
+        if (option.empty())
+            continue;
+
+		std::wstring tempName, tempPara;
+		Utils::GetNamePara(option, tempName, tempPara);
+		ParseInternalVariable(tempPara, out);
 
 		LPCWSTR name = tempName.c_str();
 
@@ -39,182 +46,187 @@ BOOL CreateGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
 
 		if (_wcsicmp(name, L"CANVAS") == 0)
 		{
-			WSVector valList = SeparateParameter(parameter, 2);
-			int tempW = MathParser::ParseI(valList[0]);
-			int tempH = MathParser::ParseI(valList[1]);
+			WSVector valList = Utils::SeparateParameter(tempPara, 2);
+            const size_t width = MathParser::ParseSizeT(valList[0]);
+            const size_t height = MathParser::ParseSizeT(valList[1]);
 
-			if (tempW <= 0 || tempH <= 0)
+			if (width <= 0 || height <= 0)
 			{
 				RmLog(2, L"Invalid Width or Height value. Default canvas 600,600 is used.");
 				customCanvas = Magick::Geometry(600, 600);
 			}
 			else
 			{
-				customCanvas = Magick::Geometry((size_t)tempW, (size_t)tempH);
+				customCanvas = Magick::Geometry(width, height);
 				customCanvas.aspect(true);
 			}
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"SPREADMETHOD") == 0)
 		{
-			int val = MathParser::ParseI(parameter);
-			if (val >= 1 && val <= 3)
-				spread = (MagickCore::SpreadMethod)val;
+			const int val = MathParser::ParseInt(tempPara);
+            if (val >= 1 && val <= 3)
+            {
+                spread = static_cast<MagickCore::SpreadMethod>(val);
+            }
 			else
 			{
 				spread = MagickCore::PadSpread;
-				RmLogF(measure->rm, 2, L"%s is invalid SpreadMethod. Pad Spread is applied", parameter);
+				RmLogF(rm, 2, L"%s is invalid SpreadMethod. Pad Spread is applied", tempPara);
 			}
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"GRADIENTANGLE") == 0)
 		{
-			double val = MathParser::ParseF(parameter);
+            const double val = MathParser::ParseDouble(tempPara);
 			//https://www.imagemagick.org/api/MagickCore/paint_8c_source.html#l00537
-			dst.contain.artifact("gradient:angle", std::to_string(val).c_str());
+			out.img.artifact("gradient:angle", std::to_string(val));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"GRADIENTEXTENT") == 0)
 		{
 			//https://www.imagemagick.org/api/MagickCore/paint_8c_source.html#l00560
-			dst.contain.artifact("gradient:extent", ws2s(parameter).c_str());
+			out.img.artifact("gradient:extent", Utils::WStringToString(tempPara));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"GRADIENTRADII") == 0)
 		{
-			WSVector valList = SeparateList(parameter, L",", 2);
-			int radiiX = MathParser::ParseI(valList[0]);
-			int radiiY = MathParser::ParseI(valList[1]);
-			std::string radii = std::to_string(radiiX) + "," + std::to_string(radiiY);
+			WSVector valList = Utils::SeparateList(tempPara, L",", 2);
+            const int radiiX = MathParser::ParseInt(valList[0]);
+            const int radiiY = MathParser::ParseInt(valList[1]);
+            std::ostringstream radii;
+			radii << radiiX << "," << radiiY;
 			//https://www.imagemagick.org/api/MagickCore/paint_8c_source.html#l00593
-			dst.contain.artifact("gradient:radii", radii.c_str());
+			out.img.artifact("gradient:radii", radii.str());
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"GRADIENTVECTOR") == 0)
 		{
-			WSVector valList = SeparateList(parameter, L",", 4);
-			int X1 = MathParser::ParseI(valList[0]);
-			int Y1 = MathParser::ParseI(valList[1]);
-			int X2 = MathParser::ParseI(valList[2]);
-			int Y2 = MathParser::ParseI(valList[3]);
-			std::string gradVector = std::to_string(X1) + "," + std::to_string(Y1) + "," + std::to_string(X2) + "," + std::to_string(Y2);
+			WSVector valList = Utils::SeparateList(tempPara, L",", 4);
+			const int X1 = MathParser::ParseInt(valList[0]);
+			const int Y1 = MathParser::ParseInt(valList[1]);
+            const int X2 = MathParser::ParseInt(valList[2]);
+            const int Y2 = MathParser::ParseInt(valList[3]);
+            std::ostringstream gradVector;
+            gradVector << X1 << "," << Y1 << "," << X2 << "," << Y2;
 			//https://www.imagemagick.org/api/MagickCore/paint_8c_source.html#l00522
-			dst.contain.artifact("gradient:vector", gradVector.c_str());
+			out.img.artifact("gradient:vector", gradVector.str());
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"COLORLIST") == 0)
 		{
-			WSVector colorList = SeparateList(RmReadString(measure->rm, parameter.c_str(), L""), L"|", NULL);
-			if (colorList.size() > 0)
-			{
-				std::vector <MagickCore::StopInfo> colorMap;
-				for (auto &colorRaw : colorList)
-				{
-					WSVector colorStop = SeparateList(colorRaw, L";", 2);
-					MagickCore::StopInfo s;
-					if (!colorStop[0].empty() && !colorStop[1].empty())
-					{
-						s.color = GetColor(colorStop[0]);
-						s.offset = MathParser::ParseF(colorStop[1]);
-						colorMap.push_back(s);
-					}
-				}
+			std::wstring rawColorList = RmReadString(rm, tempPara.c_str(), L"");
+			WSVector colorList = Utils::SeparateList(rawColorList, L"|", NULL);
+			if (colorList.size() < 1)
+            {
+                RmLogF(rm, 2, L"%s is invalid ColorList.", tempPara);
+                return FALSE;
+            }
 
-				stopColors = &colorMap[0]; //convert vector to array	
-				totalColor = colorMap.size();
-			}
-			else
+			for (auto &colorRaw : colorList)
 			{
-				RmLogF(measure->rm, 2, L"%s is invalid ColorList.", parameter);
-				return FALSE;
+				WSVector colorStop = Utils::SeparateList(colorRaw, L";", 2);
+				if (!colorStop[0].empty() && !colorStop[1].empty())
+				{
+                    MagickCore::StopInfo s{
+                        Utils::ParseColor(colorStop[0]),
+                        MathParser::ParseDouble(colorStop[1])
+                    };
+					colorMap.push_back(s);
+				}
 			}
+
+			totalColor = colorMap.size();
+
 			isSetting = TRUE;
 		}
 
 		if (isSetting)
-			setting[i] = L"";
+			option.clear();
 	}
 
+	if (totalColor == 0)
+    {
+        RmLog(rm, 2, L"No valid color was found. Check ColorList again.");
+        return FALSE;
+    }
 
-	if (totalColor != 0)
-	{
-		dst.contain.scale(customCanvas);
-		MagickCore::ExceptionInfo error;
-		MagickCore::MagickBooleanType drawSucceeced = MagickCore::GradientImage(
-			dst.contain.image(),
-			type, spread,
-			stopColors, totalColor,
-			&error
-		);
+	out.img.scale(customCanvas);
+    const auto drawSucceeced = MagickCore::GradientImage(
+		out.img.image(),
+		type, spread,
+        &colorMap[0], // convert vector to array
+        totalColor,
+		nullptr
+	);
 
-		stopColors = nullptr;
-		if (drawSucceeced == MagickCore::MagickFalse)
-		{
-			RmLog(2, L"Could not draw Gradient");
-			return FALSE;
-		}
-	}
-	else
+	if (drawSucceeced == MagickCore::MagickFalse)
 	{
-		RmLog(measure->rm, 2, L"No valid color was found. Check ColorList again.");
+		RmLog(rm, 2, L"Could not draw Gradient");
 		return FALSE;
 	}
 
 	return TRUE;
 }
 
-bool CompareStop(MagickCore::StopInfo i, MagickCore::StopInfo j) { return (i.offset < j.offset); }
+bool CompareStop(MagickCore::StopInfo i, MagickCore::StopInfo j) noexcept {
+    return (i.offset < j.offset);
+}
 
-BOOL CreateConicalGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
+BOOL CreateConicalGradient(Measure * measure, WSVector &config, ImgContainer &out)
 {
-	setting.erase(setting.begin());
 	Magick::DrawableList drawList;
 	Magick::Geometry customCanvas;
 	std::vector <MagickCore::StopInfo> colorMap;
 
-	for (int i = 0; i < setting.size(); i++)
+	for (auto &option : config)
 	{
-		std::wstring tempName, tempParameter;
-		GetNamePara(setting[i], tempName, tempParameter);
+        if (option.empty())
+            continue;
+
+		std::wstring tempName, tempPara;
+		Utils::GetNamePara(option, tempName, tempPara);
 		LPCWSTR name = tempName.c_str();
-		LPCWSTR parameter = tempParameter.c_str();
+		LPCWSTR parameter = tempPara.c_str();
 
 		BOOL isSetting = FALSE;
 
 		if (_wcsicmp(name, L"CANVAS") == 0)
 		{
-			WSVector valList = SeparateParameter(parameter, 2);
-			int tempW = MathParser::ParseI(valList[0]);
-			int tempH = MathParser::ParseI(valList[1]);
+			WSVector valList = Utils::SeparateParameter(parameter, 2);
+            const size_t width = MathParser::ParseSizeT(valList[0]);
+            const size_t height = MathParser::ParseSizeT(valList[1]);
 
-			if (tempW <= 0 || tempH <= 0)
+			if (width <= 0 || height <= 0)
 			{
 				RmLog(2, L"Invalid Width or Height value. Default canvas 600,600 is used.");
 				customCanvas = Magick::Geometry(600, 600);
 			}
 			else
 			{
-				customCanvas = Magick::Geometry((size_t)tempW, (size_t)tempH);
+				customCanvas = Magick::Geometry(width, height);
 				customCanvas.aspect(true);
 			}
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"COLORLIST") == 0)
 		{
-			WSVector colorList = SeparateList(RmReadString(measure->rm, parameter, L""), L"|", NULL);
+			std::wstring rawColorList = RmReadString(measure->rm, parameter, L"");
+			WSVector colorList = Utils::SeparateList(rawColorList, L"|", NULL);
 			if (colorList.size() > 0)
 			{
 				for (auto &colorRaw : colorList)
 				{
-					WSVector colorStop = SeparateList(colorRaw, L";", 2);
-					MagickCore::StopInfo s;
+					WSVector colorStop = Utils::SeparateList(colorRaw, L";", 2);
 					if (!colorStop[0].empty() && !colorStop[1].empty())
 					{
-						double o = MathParser::ParseF(colorStop[1]);
-						if (o >= 0 && o <= 1)
+						const double offset = MathParser::ParseDouble(colorStop[1]);
+						if (offset >= 0 && offset <= 1)
 						{
-							s.color = GetColor(colorStop[0]);
-							s.offset = o;
+                            MagickCore::StopInfo s{
+                                Utils::ParseColor(colorStop[0]),
+                                offset
+                            };
 							colorMap.push_back(s);
 						}
 					}
@@ -227,30 +239,30 @@ BOOL CreateConicalGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
 			}
 			isSetting = TRUE;
 		}
-		
+
 		if (isSetting)
-			setting[i] = L"";
+            option.clear();
 	}
 
-	double maxSize = round(sqrt(customCanvas.height() * customCanvas.height() + customCanvas.width() * customCanvas.width()) / 2);
-	double centerX = (double)customCanvas.width() / 2;
-	double centerY = (double)customCanvas.height() / 2;
+	const double maxSize = round(sqrt(customCanvas.height() * customCanvas.height() + customCanvas.width() * customCanvas.width()) / 2);
+    const double centerX = (double)customCanvas.width() / 2;
+    const double centerY = (double)customCanvas.height() / 2;
 
 	Magick::PathMovetoAbs centerPoint(Magick::Coordinate(centerX, centerY));
 
 	std::sort(colorMap.begin(), colorMap.end(), CompareStop);
 
-	size_t totalColor = colorMap.size();
+    const size_t totalColor = colorMap.size();
 	if (totalColor == 0)
 	{
-		RmLog(measure->rm, 2, L"No valid color was found. Check ColorList again.");
+		RmLog(measure->rm, LOG_ERROR, L"No valid color was found. Check ColorList again.");
 		return FALSE;
 	}
 
-	for (int i = 0; i < totalColor; i++)
+	for (size_t i = 0; i < totalColor; i++)
 	{
 		Magick::Color c1;
-		double start;
+		double start = 0;
 		if (i == 0)
 		{
 			start = colorMap[totalColor - 1].offset - 1;
@@ -258,14 +270,15 @@ BOOL CreateConicalGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
 		}
 		else
 		{
-			start = colorMap[i - 1].offset;
-			c1 = colorMap[i - 1].color;
+            const size_t index = i - (size_t)1;
+			start = colorMap[index].offset;
+			c1 = colorMap[index].color;
 		}
 
-		Magick::Color c2  = colorMap[i].color;
-		double end = colorMap[i].offset;
+		Magick::Color c2 = colorMap[i].color;
+        const double end = colorMap[i].offset;
 
-		double half = (end - start) / 2 + start;
+        const double half = (end - start) / 2 + start;
 		Magick::VPathList pie1;
 
 		pie1.push_back(centerPoint);
@@ -309,8 +322,8 @@ BOOL CreateConicalGradient(ImgStruct &dst, WSVector &setting, Measure * measure)
 		drawList.push_back(Magick::DrawablePath(pie2));
 	};
 
-	dst.contain.scale(customCanvas);
-	dst.contain.draw(drawList);
-	dst.contain.blur(100, 100);
+	out.img.scale(customCanvas);
+	out.img.draw(drawList);
+	out.img.blur(100, 100);
 	return TRUE;
 }

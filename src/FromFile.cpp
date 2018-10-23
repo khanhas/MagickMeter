@@ -1,109 +1,108 @@
 #include "MagickMeter.h"
 #include <filesystem>
+#include <sstream>
 
-BOOL CreateNew(ImgStruct &dst, WSVector &setting, Measure * measure)
+BOOL Measure::CreateFromFile(LPCWSTR baseFile, WSVector &config, ImgContainer &out)
 {
-	std::wstring baseFile = setting[0];
-	setting.erase(setting.begin());
+    std::ostringstream targetFile;
+    BOOL isScreenshot = FALSE;
+
+    if (_wcsnicmp(baseFile, L"SCREENSHOT", 10) == 0)
+    {
+        isScreenshot = TRUE;
+        if (config.size() > 0 && _wcsnicmp(config[0].c_str(), L"AUTOHIDE", 8) == 0)
+        {
+            isScreenshot = MathParser::ParseBool(config[0].substr(8));
+            config[0].clear();
+        }
+        targetFile << "screenshot:";
+
+        std::wstring baseString = baseFile;
+        const size_t monitorFlag = baseString.find(L"@", 10);
+
+        if (monitorFlag != std::wstring::npos &&
+            (monitorFlag + 1) != baseString.length())
+        {
+            const int monitorIndex = MathParser::ParseInt(baseString.substr(11));
+            targetFile << "[" << monitorIndex << "]";
+        }
+    }
+    else if (_wcsicmp(baseFile, L"CLIPBOARD") == 0)
+    {
+        targetFile << "clipboard:";
+    }
+    else // baseFile is a file path or URL
+    {
+        targetFile << Utils::WStringToString(baseFile);
+    }
+
+    BOOL isDefinedSize = FALSE;
+    Magick::Geometry defineSize;
+
+    for (auto &option : config)
+    {
+        if (option.empty())
+            continue;
+
+        std::wstring tempName;
+        std::wstring tempPara;
+        Utils::GetNamePara(option, tempName, tempPara);
+        ParseInternalVariable(tempPara, out);
+
+        LPCWSTR name = tempName.c_str();
+
+        if (_wcsicmp(name, L"RENDERSIZE") == 0)
+        {
+            WSVector imgSize = Utils::SeparateParameter(tempPara, 3);
+
+            const size_t width = MathParser::ParseSizeT(imgSize[0]);
+            const size_t height = MathParser::ParseSizeT(imgSize[1]);
+
+            if (width <= 0 && height <= 0)
+            {
+                RmLogF(rm, 2, L"%s is invalid RenderSize. Render image at normal size.", tempPara);
+                isDefinedSize = FALSE;
+            }
+            else
+            {
+                if (width > 0) defineSize.width(width);
+                if (height > 0) defineSize.height(height);
+                const int resizeType = MathParser::ParseInt(imgSize[2]);
+                Utils::SetGeometryMode(resizeType, defineSize);
+                isDefinedSize = TRUE;
+            }
+
+            option.clear();
+        }
+    }
 
 	try
 	{
-		std::string targetFile;
-		BOOL isSS = FALSE;
-		if (_wcsnicmp(baseFile.c_str(), L"SCREENSHOT", 10) == 0)
+        if (isScreenshot) RmExecute(skin, L"!SetTransparency 0");
+
+        if (isDefinedSize)
 		{
-			isSS = TRUE;
-			if (setting.size() > 0 && _wcsnicmp(setting[0].c_str(), L"AUTOHIDE", 8) == 0)
-			{
-				int autoHide = MathParser::ParseI(setting[0].substr(8));
-				isSS = (autoHide == 1);
-				setting.erase(setting.begin());
-			}
-			targetFile = "screenshot:";
-			size_t monitorFlag = baseFile.find(L"@", 10);
-			if (monitorFlag != std::wstring::npos && (monitorFlag + 1) != baseFile.length())
-				targetFile += "[" + std::to_string(MathParser::ParseI(baseFile.substr(11))) + "]";
-		}
-		else if (_wcsicmp(baseFile.c_str(), L"CLIPBOARD") == 0)
-			targetFile = "clipboard:";
-		else //A FILE PATH
-			targetFile = ws2s(baseFile);
-
-		BOOL isDefinedSize = FALSE;
-		Magick::Geometry defineSize;
-
-		for (auto &settingIt : setting)
-		{
-			std::wstring tempName, parameter;
-			GetNamePara(settingIt, tempName, parameter);
-			ParseInternalVariable(measure, parameter, dst);
-
-			LPCWSTR name = tempName.c_str();
-
-			if (_wcsicmp(name, L"RENDERSIZE") == 0)
-			{
-				WSVector imgSize = SeparateParameter(parameter, 3);
-
-				int width = MathParser::ParseI(imgSize[0]);
-				int height = MathParser::ParseI(imgSize[1]);
-
-				if (width <= 0 && height <= 0)
-				{
-					RmLogF(measure->rm, 2, L"%s is invalid RenderSize. Render image at normal size.", parameter);
-					isDefinedSize = FALSE;
-				}
-				else
-				{
-					if (width > 0) defineSize.width(width);
-					if (height > 0) defineSize.height(height);
-					int resizeType = MathParser::ParseI(imgSize[2]);
-					switch (resizeType)
-					{
-					case 1:
-						defineSize.aspect(true);
-						break;
-					case 2:
-						defineSize.fillArea(true);
-						break;
-					case 3:
-						defineSize.greater(true);
-						break;
-					case 4:
-						defineSize.less(true);
-						break;
-					}
-					isDefinedSize = TRUE;
-				}
-
-				settingIt = L"";
-			}
-		}
-
-
-		if (isSS) RmExecute(measure->skin, L"!SetTransparency 0");
-
-		if (isDefinedSize)
-		{
-			dst.contain.read(defineSize, targetFile); //Why it just works with SVG?
-			dst.contain.resize(defineSize);
+			out.img.read(defineSize, targetFile.str()); // Why it just works with SVG?
+			out.img.resize(defineSize);
 		}
 		else
 		{
-			dst.contain.read(targetFile);
+			out.img.read(targetFile.str());
 		}
-		
-		if (isSS) RmExecute(measure->skin, L"!SetTransparency 255");
 
-		if (!dst.contain.isValid()) return FALSE;
+		if (isScreenshot) RmExecute(skin, L"!SetTransparency 255");
 
-		dst.contain.strip();
+		if (!out.img.isValid()) return FALSE;
 
-		dst.W = dst.contain.columns();
-		dst.H = dst.contain.rows();
+		out.img.strip();
+		out.img.alpha(true);
+
+		out.W = out.img.columns();
+		out.H = out.img.rows();
 	}
 	catch(Magick::Exception &error_)
 	{
-		error2pws(error_);
+		LogError(error_);
 		return FALSE;
 	}
 

@@ -20,7 +20,7 @@ BOOL Measure::CreateGradient(LPCWSTR gradType, WSVector &config, ImgContainer &o
 	}
 	else
 	{
-		RmLogF(rm, 2, L"%s is invalid Gradient type. Valid types: Linear, Radical, Conical.", config[0].c_str());
+		RmLogF(rm, LOG_ERROR, L"%s is invalid Gradient type. Valid types: Linear, Radical, Conical.", config[0].c_str());
 		return FALSE;
 	}
 

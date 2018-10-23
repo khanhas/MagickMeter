@@ -2,10 +2,8 @@
 #include <locale>
 #include <codecvt>
 #include <vector>
-#include <iomanip>
 #include <windows.h>
 #include <Strsafe.h>
-#include <Shlwapi.h>
 #include <filesystem>
 #include <algorithm>
 #include "Magick++.h"
@@ -13,9 +11,9 @@
 
 #define INVISIBLE Magick::Color("transparent")
 #define ONEPIXEL Magick::Image(Magick::Geometry(1,1), INVISIBLE)
-#define MagickPI2	1.57079632679489661923132169163975144209858469968755
-#define MagickPI	3.14159265358979323846264338327950288419716939937510
-#define Magick2PI	6.28318530717958647692528676655900576839433879875020
+constexpr auto MagickPI2 = 1.57079632679489661923132169163975144209858469968755;
+constexpr auto MagickPI  = 3.14159265358979323846264338327950288419716939937510;
+constexpr auto Magick2PI = 6.28318530717958647692528676655900576839433879875020;
 
 typedef std::vector<std::wstring> WSVector;
 typedef enum
@@ -105,11 +103,11 @@ namespace Utils
 	std::vector<std::wstring> SeparateList(
 		std::wstring raw,
         LPCWSTR separator,
-		int maxElement,
+		int minElementCount,
 		LPCWSTR defValue = L"0");
 	std::vector<std::wstring> SeparateParameter(
 		std::wstring raw,
-		int maxPara,
+		int minParaCount,
         LPCWSTR defValue = L"0");
 	Magick::Color ParseColor(std::wstring raw);
 	std::wstring ColorToWString(Magick::Color c);

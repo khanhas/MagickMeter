@@ -1,5 +1,4 @@
 #include "MagickMeter.h"
-#include "MagickCore\magick-type.h"
 
 ImgType GetType(std::wstring input) noexcept
 {
@@ -260,8 +259,7 @@ BOOL Measure::GetImage(std::wstring imageName, BOOL isPush)
 
 		std::wstring name, parameter;
 		Utils::GetNamePara(option, name, parameter);
-        RmLog(2, name.c_str());
-        RmLog(2, parameter.c_str());
+
 		ParseInternalVariable(parameter, curImg);
 
 		if (!ParseEffect(curImg, name, parameter))
@@ -349,7 +347,7 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
             auto newSize = Magick::Geometry(
                 container.img.columns() + x,
                 container.img.rows() + y);
-            RmLog(2, Utils::StringToWString(newSize.operator std::string()).c_str());
+
             auto tempImg = Magick::Image(newSize, INVISIBLE);
 
             tempImg.composite(container.img, x, y, Magick::OverCompositeOp);
@@ -517,7 +515,7 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 
 			if (rawList.size() < 8)
 			{
-				RmLog(2, L"Perspective: Not enough control point. Requires 4 pairs of X and Y.");
+				RmLog(rm, LOG_WARNING, L"Perspective: Not enough control point. Requires 4 pairs of X and Y.");
 				return TRUE;
 			}
 			double doubleArray[16];
@@ -734,12 +732,12 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 
 			if (w < 0 || h < 0)
 			{
-				RmLog(2, L"Crop: Invalid width or height value.");
+				RmLog(rm, LOG_WARNING, L"Crop: Invalid width or height value.");
 				return TRUE;
 			}
 			else if (origin > 5 || origin < 0)
 			{
-				RmLog(2, L"Crop: Invalid Origin value. Left Top origin is used.");
+				RmLog(rm, LOG_WARNING, L"Crop: Invalid Origin value. Left Top origin is used.");
 				return TRUE;
 			}
 

@@ -47,7 +47,7 @@ std::wstring Utils::TrimString(std::wstring bloatedString)
 std::vector<std::wstring> Utils::SeparateList(
 	std::wstring rawString,
     LPCWSTR separator,
-	int maxElement,
+    int minElementCount,
     LPCWSTR defValue)
 {
 	std::vector<std::wstring> vectorList;
@@ -82,9 +82,9 @@ std::vector<std::wstring> Utils::SeparateList(
 		}
 	}
 
-	if (maxElement)
+	if (minElementCount)
 	{
-		while (vectorList.size() < maxElement)
+		while (vectorList.size() < minElementCount)
 		{
 			vectorList.push_back(defValue);
 		}

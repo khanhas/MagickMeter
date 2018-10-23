@@ -56,7 +56,7 @@ BOOL Measure::CreateText(std::wstring text, WSVector &config, ImgContainer &out)
             const size_t height = MathParser::ParseSizeT(valList[1]);
 
 			if (width <= 0 || height <= 0)
-				RmLog(2, L"Invalid Width or Height value. Default canvas is used.");
+				RmLog(rm, LOG_WARNING, L"Invalid Width or Height value. Default canvas is used.");
 			else
 			{
 				customCanvas = Magick::Geometry(width, height);
@@ -132,7 +132,7 @@ BOOL Measure::CreateText(std::wstring text, WSVector &config, ImgContainer &out)
 			else
 			{
 				tempImg.fontStyle(Magick::NormalStyle);
-				RmLog(2, L"Invalid Text Style. Normal style is applied.");
+				RmLog(rm, LOG_WARNING, L"Invalid Text Style. Normal style is applied.");
 			}
 			isValidOption = TRUE;
 		}
@@ -150,7 +150,7 @@ BOOL Measure::CreateText(std::wstring text, WSVector &config, ImgContainer &out)
 			{
 			}
 			else
-				RmLogF(rm, 2, L"%s is invalid Text Case.", parameter);
+				RmLogF(rm, LOG_WARNING, L"%s is invalid Text Case.", parameter);
 
 			isValidOption = TRUE;
 		}
@@ -190,7 +190,7 @@ BOOL Measure::CreateText(std::wstring text, WSVector &config, ImgContainer &out)
 			else if (_wcsnicmp(parameter, L"CENTERTOP", 9) == 0 || _wcsnicmp(parameter, L"CENTER", 6) == 0)
 				align = CENTERTOP;
 			else
-				RmLog(2, L"Invalid Align value. Anchor Left is applied");
+				RmLog(rm, LOG_WARNING, L"Invalid Align value. Anchor Left is applied");
 
 			isValidOption = TRUE;
 		}
@@ -218,7 +218,7 @@ BOOL Measure::CreateText(std::wstring text, WSVector &config, ImgContainer &out)
             else
             {
                 tempImg.textDirection(Magick::LeftToRightDirection);
-                RmLog(2, L"Invalid Direction value. Left to Right direction is applied");
+                RmLog(rm, LOG_WARNING, L"Invalid Direction value. Left to Right direction is applied");
             }
 
 			isValidOption = TRUE;

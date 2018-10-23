@@ -1,0 +1,21 @@
+﻿{
+    "name":  "MagickMeter Example Skins",
+    "author":  "khanhas",
+    "version":  "0.6.0",
+    "minimumVersion":  "4.1",
+    "minimumWindows":  "5.1",
+    "output":  "./dist/magickmeter_0.6.0.rmskin",
+    "skinDir":  "./example-skins",
+    "configPrefix":  "MagickMeterExample",
+    "headerImage":  "./header.bmp",
+    "loadType":  "Skin",
+    "load":  "MagickMeterExample\\SexyClock\\SexyClock.ini",
+    "variableFiles":  "",
+    "plugins":  [
+                    {
+                        "name":  "magickmeter.dll",
+                        "x86":  "D:\\magickmeter\\bin\\x86\\magickmeter.dll",
+                        "x64":  "D:\\magickmeter\\bin\\x64\\magickmeter.dll"
+                    }
+                ]
+}

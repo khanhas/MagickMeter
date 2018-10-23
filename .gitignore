@@ -32,7 +32,9 @@
 *.app
 
 Publish/
-src/.vs
-Release
-gyp
-build
+src/.vs/
+.vs/
+gyp/
+build/
+bin/
+obj/

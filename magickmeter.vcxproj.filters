@@ -73,56 +73,27 @@
     <Filter Include="D:\MagickMeter\src">
       <UniqueIdentifier>{8CDEE807-BC53-E450-C8B8-4DEBB66742D4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="D:">
-      <UniqueIdentifier>{E5D29F2B-0177-9942-CA95-0FF700094F89}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="D:\MagickMeter">
-      <UniqueIdentifier>{B35011C9-9A7D-5281-C764-7CD5E5B48CAC}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="D:\MagickMeter\src">
-      <UniqueIdentifier>{8CDEE807-BC53-E450-C8B8-4DEBB66742D4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="D:">
-      <UniqueIdentifier>{E5D29F2B-0177-9942-CA95-0FF700094F89}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="D:\MagickMeter">
-      <UniqueIdentifier>{B35011C9-9A7D-5281-C764-7CD5E5B48CAC}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="D:\MagickMeter\src">
-      <UniqueIdentifier>{8CDEE807-BC53-E450-C8B8-4DEBB66742D4}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="D:\MagickMeter\src\FromCombine.cpp">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClCompile>
-    <ClCompile Include="D:\MagickMeter\src\FromFile.cpp">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClCompile>
-    <ClCompile Include="D:\MagickMeter\src\FromGradient.cpp">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClCompile>
-    <ClCompile Include="D:\MagickMeter\src\FromShape.cpp">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClCompile>
-    <ClCompile Include="D:\MagickMeter\src\FromText.cpp">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClCompile>
-    <ClCompile Include="D:\MagickMeter\src\MagickMeter.cpp">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClCompile>
-    <ClInclude Include="D:\MagickMeter\src\MagickMeter.h">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClInclude>
-    <ResourceCompile Include="D:\MagickMeter\src\Magickmeter.rc">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ResourceCompile>
-    <ClCompile Include="D:\MagickMeter\src\MathParser.cpp">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClCompile>
-    <ClInclude Include="D:\MagickMeter\src\version.h">
-      <Filter>D:\MagickMeter\src</Filter>
-    </ClInclude>
-    <None Include="magickmeter.gyp"/>
+    <ClCompile Include="src\FromCombine.cpp" />
+    <ClCompile Include="src\FromFile.cpp" />
+    <ClCompile Include="src\FromGradient.cpp" />
+    <ClCompile Include="src\FromShape.cpp" />
+    <ClCompile Include="src\FromText.cpp" />
+    <ClCompile Include="src\MagickMeter.cpp" />
+    <ClCompile Include="src\MathParser.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cpp.hint" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\MagickMeter.h" />
+    <ClInclude Include="src\version.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\Magickmeter.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Utils.cpp" />
   </ItemGroup>
 </Project>

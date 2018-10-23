@@ -16,85 +16,112 @@
     <RootNamespace>magickmeter</RootNamespace>
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
     <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props"/>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
   </PropertyGroup>
   <PropertyGroup Label="Locals">
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props"/>
-  <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props"/>
-  <ImportGroup Label="ExtensionSettings"/>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  <ImportGroup Label="ExtensionSettings" />
   <ImportGroup Label="PropertySheets">
-    <Import Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"/>
+    <Import Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" />
   </ImportGroup>
-  <PropertyGroup Label="UserMacros"/>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="ImageMagick.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="ImageMagick.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <ExecutablePath>$(ExecutablePath);$(MSBuildProjectDirectory)\.\bin\;$(MSBuildProjectDirectory)\.\bin\</ExecutablePath>
-    <IntDir>$(Configuration)\obj\$(ProjectName)\</IntDir>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">build\x64\</OutDir>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">build\x86\</OutDir>
+    <IntDir>obj\$(PlatformTarget)\</IntDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">bin\$(PlatformTarget)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">bin\$(PlatformTarget)\</OutDir>
     <TargetName>$(ProjectName)</TargetName>
     <TargetPath>$(OutDir)\$(ProjectName)$(TargetExt)</TargetPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+    <RunCodeAnalysis>false</RunCodeAnalysis>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <AdditionalIncludeDirectories>src;API;C:\Program Files (x86)\ImageMagick-7.0.8-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <FavorSizeOrSpeed>Size</FavorSizeOrSpeed>
-      <Optimization>MaxSpeed</Optimization>
+      <AdditionalIncludeDirectories>src;API;$(ImageMagick_x86)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <Optimization>MinSpace</Optimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PreprocessorDefinitions>UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>C:/Program Files (x86)/ImageMagick-7.0.8-Q16/lib/CORE_RL_Magick++_.lib;C:/Program Files (x86)/ImageMagick-7.0.8-Q16/lib/CORE_RL_MagickCore_.lib;C:/Program Files (x86)/ImageMagick-7.0.8-Q16/lib/CORE_RL_MagickWand_.lib;./API/x32/Rainmeter.lib;Shlwapi.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(ImageMagick_x86)\lib\CORE_RL_Magick++_.lib;$(ImageMagick_x86)\lib\CORE_RL_MagickCore_.lib;$(ImageMagick_x86)\lib\CORE_RL_MagickWand_.lib;./API/x32/Rainmeter.lib;Shlwapi.lib</AdditionalDependencies>
       <OutputFile>$(OutDir)$(ProjectName)$(TargetExt)</OutputFile>
     </Link>
     <ResourceCompile>
-      <AdditionalIncludeDirectories>src;API;C:\Program Files (x86)\ImageMagick-7.0.8-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;API;$(ImageMagick_x86)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>UNICODE;%(PreprocessorDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>src;API;C:\Program Files\ImageMagick-7.0.8-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <FavorSizeOrSpeed>Size</FavorSizeOrSpeed>
-      <Optimization>MaxSpeed</Optimization>
+      <AdditionalIncludeDirectories>src;API;$(ImageMagick_x64)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <Optimization>MinSpace</Optimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PreprocessorDefinitions>UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <EnablePREfast>false</EnablePREfast>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>C:/Program Files/ImageMagick-7.0.8-Q16/lib/CORE_RL_Magick++_.lib;C:/Program Files/ImageMagick-7.0.8-Q16/lib/CORE_RL_MagickCore_.lib;C:/Program Files/ImageMagick-7.0.8-Q16/lib/CORE_RL_MagickWand_.lib;./API/x64/Rainmeter.lib;Shlwapi.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(ImageMagick_x64)\lib\CORE_RL_Magick++_.lib;$(ImageMagick_x64)\lib\CORE_RL_MagickCore_.lib;$(ImageMagick_x64)\lib\CORE_RL_MagickWand_.lib;./API/x64/Rainmeter.lib</AdditionalDependencies>
       <OutputFile>$(OutDir)$(ProjectName)$(TargetExt)</OutputFile>
     </Link>
     <ResourceCompile>
-      <AdditionalIncludeDirectories>src;API;C:\Program Files\ImageMagick-7.0.8-Q16\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;API;$(ImageMagick_x64)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>UNICODE;%(PreprocessorDefinitions);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
+    <PreBuildEvent>
+      <Command>taskkill /f /fi "imagename eq rainmeter.exe"</Command>
+    </PreBuildEvent>
+    <PostBuildEvent>
+      <Command>xcopy  "$(TargetDir)$(TargetFileName)" "%25appdata%25\Rainmeter\Plugins" /Y</Command>
+    </PostBuildEvent>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <None Include="magickmeter.gyp"/>
+    <None Include="cpp.hint" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="D:\MagickMeter\src\MagickMeter.h"/>
-    <ClInclude Include="D:\MagickMeter\src\version.h"/>
+    <ClInclude Include="src\MagickMeter.h" />
+    <ClInclude Include="src\version.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="D:\MagickMeter\src\FromCombine.cpp"/>
-    <ClCompile Include="D:\MagickMeter\src\FromFile.cpp"/>
-    <ClCompile Include="D:\MagickMeter\src\FromGradient.cpp"/>
-    <ClCompile Include="D:\MagickMeter\src\FromShape.cpp"/>
-    <ClCompile Include="D:\MagickMeter\src\FromText.cpp"/>
-    <ClCompile Include="D:\MagickMeter\src\MagickMeter.cpp"/>
-    <ClCompile Include="D:\MagickMeter\src\MathParser.cpp"/>
+    <ClCompile Include="src\FromCombine.cpp" />
+    <ClCompile Include="src\FromFile.cpp" />
+    <ClCompile Include="src\FromGradient.cpp" />
+    <ClCompile Include="src\FromShape.cpp" />
+    <ClCompile Include="src\FromText.cpp" />
+    <ClCompile Include="src\MagickMeter.cpp" />
+    <ClCompile Include="src\MathParser.cpp" />
+    <ClCompile Include="src\Utils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="D:\MagickMeter\src\Magickmeter.rc"/>
+    <ResourceCompile Include="src\Magickmeter.rc" />
   </ItemGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
-  <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets"/>
-  <ImportGroup Label="ExtensionTargets"/>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  <ImportGroup Label="ExtensionTargets" />
 </Project>

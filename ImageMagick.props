@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <ImageMagick_x64>$(ProgramW6432)\ImageMagick-7.0.8-Q16</ImageMagick_x64>
+    <ImageMagick_x86>$(ProgramFiles)\ImageMagick-7.0.8-Q16</ImageMagick_x86>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemDefinitionGroup />
+  <ItemGroup>
+    <BuildMacro Include="ImageMagick_x64">
+      <Value>$(ImageMagick_x64)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="ImageMagick_x86">
+      <Value>$(ImageMagick_x86)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+  </ItemGroup>
+</Project>

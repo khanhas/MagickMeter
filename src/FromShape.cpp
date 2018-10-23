@@ -5,6 +5,22 @@ Magick::Coordinate GetProportionPoint(Magick::Coordinate point, double segment,
 	double length, double dx, double dy);
 void DrawRoundedCorner(Magick::VPathList &drawList, const Magick::Coordinate &angularPoint,
 	Magick::Coordinate &p1, Magick::Coordinate &p2, double radius, bool start);
+void CreateRectangle(
+    WSVector &paraList,
+    std::vector<Magick::Drawable> &shapeAttributes,
+    Magick::Drawable &outShape,
+    double &outWidth,
+    double &outHeight,
+    ImgContainer &out);
+
+void CreateRectangleCustomCorner(
+    WSVector &paraList,
+    WSVector &cornerList,
+    std::vector<Magick::Drawable> &shapeAttributes,
+    Magick::Drawable &outShape,
+    double &outWidth,
+    double &outHeight,
+    ImgContainer &out);
 
 struct ShapeEllipse
 {
@@ -15,8 +31,7 @@ struct ShapeEllipse
 	double start = 0;
 	double end = 360;
 	auto Create(void) {
-		//Because of Antialias, ellipse exceeds its actual size 1 pixel.
-		return Magick::DrawableEllipse(x, y, radiusX - (radiusX == 0 ? 0 : 0.5), radiusY - (radiusY == 0 ? 0 : 0.5), start, end);
+		return Magick::DrawableEllipse(x, y, radiusX, radiusY, start, end);
 	}
 };
 
@@ -89,7 +104,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		const size_t pSize = paraList.size();
 		if (pSize < 3)
 		{
-			RmLog(2, L"Ellipse: Not enough parameter.");
+			RmLog(rm, LOG_ERROR, L"Ellipse: Not enough parameter.");
 			return FALSE;
 		}
 		ShapeEllipse e;
@@ -107,8 +122,8 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		mainShape = e.Create();
 		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
 
-		width = e.x + abs(e.radiusX);
-		height = e.y + abs(e.radiusY);
+		width = e.x + abs(e.radiusX) + 1;
+		height = e.y + abs(e.radiusY) + 1;
 
 		out.X = (ssize_t)(e.x - abs(e.radiusX));
 		out.Y = (ssize_t)(e.y - abs(e.radiusY));
@@ -119,55 +134,25 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 	}
 	case RECTANGLE:
 	{
-		paraList = Utils::SeparateParameter(shapeParas, NULL);
-		const size_t pSize = paraList.size();
-		if (pSize < 4)
-		{
-			RmLog(rm, LOG_ERROR, L"Rectangle: Not enough parameter.");
-			return FALSE;
-		}
+        auto customParaList = Utils::SeparateList(shapeParas, L";", 1, L"");
+        paraList = Utils::SeparateParameter(customParaList.at(0), NULL);
 
-		ShapeRectangle r;
-		r.x = MathParser::ParseDouble(paraList[0]);
-		r.y = MathParser::ParseDouble(paraList[1]);
-		r.w = MathParser::ParseDouble(paraList[2]);
-		r.h = MathParser::ParseDouble(paraList[3]);
+        if (paraList.size() < 4)
+        {
+            RmLog(rm, LOG_ERROR, L"Rectangle: Not enough parameter.");
+            return FALSE;
+        }
 
-		if (pSize > 4) r.cornerX = MathParser::ParseDouble(paraList[4]);
+        if (customParaList.size() == 1)
+        {
+            CreateRectangle(paraList, drawList, mainShape, width, height, out);
+        }
+        else if (customParaList.size() > 1)
+        {
+            auto cornerList = Utils::SeparateParameter(customParaList.at(1), NULL);
+            CreateRectangleCustomCorner(paraList, cornerList, drawList, mainShape, width, height, out);
+        }
 
-		r.cornerY = r.cornerX;
-		if (pSize > 5) r.cornerY = MathParser::ParseDouble(paraList[5]);
-
-		if (r.cornerX == 0 && r.cornerY == 0)
-			mainShape = r.Create();
-		else
-			mainShape = r.CreateRound();
-
-		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
-
-		if (r.w > 0)
-		{
-			width = r.w + r.x;
-			out.X = (ssize_t)r.x;
-		}
-		else
-		{
-			width = r.x;
-			out.X = (ssize_t)(r.x + r.w);
-		}
-		out.W = (size_t)abs(r.w);
-
-		if (r.h > 0)
-		{
-			height = r.h + r.y;
-			out.Y = (ssize_t)r.y;
-		}
-		else
-		{
-			height = r.y;
-			out.Y = (ssize_t)(r.y + r.h);
-		}
-		out.H = (size_t)abs(r.h);
 		break;
 	}
 	case POLYGON:
@@ -240,8 +225,8 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		p.push_back(Magick::PathClosePath());
 		mainShape = Magick::DrawablePath(p);
 		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
-		width = origX + radiusX;
-		height = origY + radiusY;
+		width = origX + radiusX + 1;
+		height = origY + radiusY + 1;
 		out.X = (ssize_t)round(origX - radiusX);
 		out.Y = (ssize_t)round(origY - radiusY);
 		out.W = (size_t)ceil(radiusX * 2);
@@ -276,7 +261,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
         }
         else
         {
-            RmLogF(rm, 2, L"%s is invalid start point.", pathList[0].c_str());
+            RmLogF(rm, LOG_ERROR, L"%s is invalid start point.", pathList[0].c_str());
             return FALSE;
         }
 
@@ -448,7 +433,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 
             if (tempW <= 0 || tempH <= 0)
             {
-                RmLog(2, L"Invalid Width or Height value. Default canvas is used.");
+                RmLog(rm, LOG_WARNING, L"Invalid Width or Height value. Default canvas is used.");
             }
 			else
 			{
@@ -517,7 +502,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 			else if (_wcsicmp(tempPara.c_str(), L"INSIDE") == 0)
 				strokeAlign = 2;
 			else
-				RmLog(2, L"Invalid StrokeAlign value. Center align is applied.");
+				RmLog(rm, LOG_WARNING, L"Invalid StrokeAlign value. Center align is applied.");
 
 			isSetting = TRUE;
 		}
@@ -532,7 +517,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 				lj = MagickCore::BevelJoin;
 			else
 			{
-				RmLog(2, L"Invalid StrokeLineJoin value. Miter line join is applied.");
+				RmLog(rm, LOG_WARNING, L"Invalid StrokeLineJoin value. Miter line join is applied.");
 			}
 			drawList.push_back(Magick::DrawableStrokeLineJoin(lj));
 		}
@@ -547,7 +532,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 				lc = MagickCore::SquareCap;
 			else
 			{
-				RmLog(2, L"Invalid StrokeLineCap value. Flat line cap is applied.");
+				RmLog(rm, LOG_WARNING, L"Invalid StrokeLineCap value. Flat line cap is applied.");
 			}
 			drawList.push_back(Magick::DrawableStrokeLineCap(lc));
 		}
@@ -567,7 +552,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
             customCanvas.aspect(true);
 		}
 
-        out.img.size(customCanvas);
+        out.img.scale(customCanvas);
 
 		drawList.push_back(mainShape);
 
@@ -676,4 +661,155 @@ Magick::Coordinate GetProportionPoint(Magick::Coordinate point, double segment,
 		point.x() - dx * factor,
 		point.y() - dy * factor
 	);
+}
+
+void CreateRectangle(
+    WSVector &paraList,
+    std::vector<Magick::Drawable> &shapeAttributes,
+    Magick::Drawable &outShape,
+    double &outWidth,
+    double &outHeight,
+    ImgContainer &out)
+{
+    const size_t pSize = paraList.size();
+
+    ShapeRectangle r;
+    r.x = MathParser::ParseDouble(paraList[0]);
+    r.y = MathParser::ParseDouble(paraList[1]);
+    r.w = MathParser::ParseDouble(paraList[2]);
+    r.h = MathParser::ParseDouble(paraList[3]);
+
+    if (pSize > 4) r.cornerX = MathParser::ParseDouble(paraList[4]);
+
+    r.cornerY = r.cornerX;
+    if (pSize > 5) r.cornerY = MathParser::ParseDouble(paraList[5]);
+
+    if (r.cornerX == 0 && r.cornerY == 0)
+        outShape = r.Create();
+    else
+        outShape = r.CreateRound();
+
+    shapeAttributes.push_back(Magick::DrawableFillColor(Magick::Color("white")));
+
+    if (r.w > 0)
+    {
+        outWidth = r.w + r.x + 1;
+        out.X = (ssize_t)r.x;
+    }
+    else
+    {
+        outWidth = r.x + 1;
+        out.X = (ssize_t)(r.x + r.w);
+    }
+    out.W = (size_t)abs(r.w);
+
+    if (r.h > 0)
+    {
+        outHeight = r.h + r.y + 1;
+        out.Y = (ssize_t)r.y;
+    }
+    else
+    {
+        outHeight = r.y + 1;
+        out.Y = (ssize_t)(r.y + r.h);
+    }
+    out.H = (size_t)abs(r.h);
+}
+
+void CreateRectangleCustomCorner(
+    WSVector &paraList,
+    WSVector &cornerList,
+    std::vector<Magick::Drawable> &shapeAttributes,
+    Magick::Drawable &outShape,
+    double &outWidth,
+    double &outHeight,
+    ImgContainer &out)
+{
+    const double x = MathParser::ParseDouble(paraList.at(0));
+    const double y = MathParser::ParseDouble(paraList.at(1));
+    const double w = MathParser::ParseDouble(paraList.at(2));
+    const double h = MathParser::ParseDouble(paraList.at(3));
+
+    std::vector<double> parsedCorner;
+    if (cornerList.size() == 1)
+    {
+        const double corner = MathParser::ParseDouble(cornerList.at(0));
+        for (int i = 0; i < 4; i++)
+            parsedCorner.push_back(corner);
+    }
+    else if (cornerList.size() == 2)
+    {
+        const double corner1 = MathParser::ParseDouble(cornerList.at(0));
+        const double corner2 = MathParser::ParseDouble(cornerList.at(1));
+
+        parsedCorner.push_back(corner1);
+        parsedCorner.push_back(corner2);
+        parsedCorner.push_back(corner1);
+        parsedCorner.push_back(corner2);
+    }
+    else if (cornerList.size() == 3)
+    {
+        const double corner2 = MathParser::ParseDouble(cornerList.at(1));
+        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(0)));
+        parsedCorner.push_back(corner2);
+        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(2)));
+        parsedCorner.push_back(corner2);
+    }
+    else if (cornerList.size() >= 4)
+    {
+        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(0)));
+        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(1)));
+        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(2)));
+        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(3)));
+    }
+
+    Magick::VPathList p;
+
+    Magick::Coordinate c1(x + w, y);
+    Magick::Coordinate angPoint(x, y);
+    Magick::Coordinate c2(x, y + h);
+    DrawRoundedCorner(p, angPoint, c1, c2, parsedCorner.at(0), true);
+
+    c1 = angPoint;
+    angPoint = c2;
+    c2 = Magick::Coordinate(x + w, y + h);
+    DrawRoundedCorner(p, angPoint, c1, c2, parsedCorner.at(3), false);
+
+    c1 = angPoint;
+    angPoint = c2;
+    c2 = Magick::Coordinate(x + w, y);
+    DrawRoundedCorner(p, angPoint, c1, c2, parsedCorner.at(2), false);
+
+    c1 = angPoint;
+    angPoint = c2;
+    c2 = Magick::Coordinate(x, y);
+    DrawRoundedCorner(p, angPoint, c1, c2, parsedCorner.at(1), false);
+
+    p.push_back(Magick::PathClosePath());
+    outShape = Magick::DrawablePath(p);
+    shapeAttributes.push_back(Magick::DrawableFillColor(Magick::Color("white")));
+
+    if (w > 0)
+    {
+        outWidth = w + x + 1;
+        out.X = (ssize_t)x;
+    }
+    else
+    {
+        outWidth = x + 1;
+        out.X = (ssize_t)(x + w);
+    }
+    out.W = (size_t)abs(w);
+
+    if (h > 0)
+    {
+        outHeight = h + y + 1;
+        out.Y = (ssize_t)y;
+    }
+    else
+    {
+        outHeight = y + 1;
+        out.Y = (ssize_t)(y + h);
+    }
+    out.H = (size_t)abs(h);
 }

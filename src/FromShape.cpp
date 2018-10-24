@@ -1,51 +1,34 @@
 #include "MagickMeter.h"
 
 double GetLength(double dx, double dy) noexcept;
-Magick::Coordinate GetProportionPoint(Magick::Coordinate point, double segment,
-	double length, double dx, double dy);
-void DrawRoundedCorner(Magick::VPathList &drawList, const Magick::Coordinate &angularPoint,
-	Magick::Coordinate &p1, Magick::Coordinate &p2, double radius, bool start);
-void CreateRectangle(
-    WSVector &paraList,
-    std::vector<Magick::Drawable> &shapeAttributes,
-    Magick::Drawable &outShape,
-    double &outWidth,
-    double &outHeight,
-    ImgContainer &out);
 
-void CreateRectangleCustomCorner(
-    WSVector &paraList,
-    WSVector &cornerList,
-    std::vector<Magick::Drawable> &shapeAttributes,
-    Magick::Drawable &outShape,
-    double &outWidth,
-    double &outHeight,
-    ImgContainer &out);
-
-struct ShapeEllipse
+struct Shape
 {
-	double x = 0;
-	double y = 0;
-	double radiusX = 0;
-	double radiusY = 0;
-	double start = 0;
-	double end = 360;
-	auto Create(void) {
-		return Magick::DrawableEllipse(x, y, radiusX, radiusY, start, end);
-	}
+    Magick::Drawable shape;
+    Magick::DrawableList attributes;
+    double canvasWidth;
+    double canvasHeight;
 };
 
-struct ShapeRectangle
-{
-	double x = 0;
-	double y = 0;
-	double w = 0;
-	double h = 0;
-	double cornerX = 0;
-	double cornerY = 0;
-	auto Create(void) { return Magick::DrawableRectangle(x, y, x + w, y + h); }
-	auto CreateRound(void) { return Magick::DrawableRoundRectangle(x, y, x + w, y + h, cornerX, cornerY); }
-};
+Magick::Coordinate GetProportionPoint(
+    Magick::Coordinate point,
+    double segment,
+	double length,
+    double dx,
+    double dy);
+
+void DrawRoundedCorner(
+    Magick::VPathList &drawList,
+    const Magick::Coordinate &angularPoint,
+	const Magick::Coordinate &p1,
+    const Magick::Coordinate &p2,
+    double radius,
+    bool start);
+
+Shape* CreateEllipse(WSVector &inParaList, ImgContainer &outImg);
+Shape* CreateRectangle(WSVector &inParaList, ImgContainer &outImg);
+Shape* CreateRectangleCustomCorner(WSVector &inParaList, std::vector<double> &inCornerList, ImgContainer &outImg);
+Shape* CreatePolygon(WSVector &inParaList, std::vector<double> &inCornerList, ImgContainer &outImg);
 
 class PathCubicSmoothCurvetoAbs : public Magick::VPathBase
 {
@@ -86,56 +69,34 @@ private:
 
 BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &config, ImgContainer &out)
 {
-	std::vector<Magick::Drawable> drawList;
-	Magick::Drawable mainShape;
-	WSVector paraList;
-
-	double width = 0;
-	double height = 0;
+	Shape* outShape = nullptr;
 
 	double strokeWidth = 0;
+    int strokeAlign = 0;
+    auto strokeColor = Magick::DrawableStrokeColor(Magick::Color("black"));
 
 	Magick::Geometry customCanvas;
 	switch (shapeType)
 	{
 	case ELLIPSE:
 	{
-		paraList = Utils::SeparateParameter(shapeParas, NULL);
+		auto paraList = Utils::SeparateParameter(shapeParas, 0);
 		const size_t pSize = paraList.size();
 		if (pSize < 3)
 		{
 			RmLog(rm, LOG_ERROR, L"Ellipse: Not enough parameter.");
 			return FALSE;
 		}
-		ShapeEllipse e;
-		e.x = MathParser::ParseDouble(paraList[0]);
-		e.y = MathParser::ParseDouble(paraList[1]);
-		e.radiusX = MathParser::ParseDouble(paraList[2]);
 
-		e.radiusY = e.radiusX;
-		if (pSize > 3) e.radiusY = MathParser::ParseDouble(paraList[3]);
-
-		if (pSize > 4) e.start = MathParser::ParseDouble(paraList[4]);
-
-		if (pSize > 5) e.end = MathParser::ParseDouble(paraList[5]);
-
-		mainShape = e.Create();
-		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
-
-		width = e.x + abs(e.radiusX) + 1;
-		height = e.y + abs(e.radiusY) + 1;
-
-		out.X = (ssize_t)(e.x - abs(e.radiusX));
-		out.Y = (ssize_t)(e.y - abs(e.radiusY));
-		out.W = (size_t)(e.radiusX * 2.0);
-		out.H = (size_t)(e.radiusY * 2.0);
+        outShape = CreateEllipse(paraList, out);
 
 		break;
 	}
 	case RECTANGLE:
 	{
-        auto customParaList = Utils::SeparateList(shapeParas, L";", 1, L"");
-        paraList = Utils::SeparateParameter(customParaList.at(0), NULL);
+        auto customParaList = Utils::SeparateList(shapeParas, L";", 2, L"");
+        auto paraList = Utils::SeparateParameter(customParaList.at(0), 0);
+        auto cornerList = Utils::SeparateParameter(customParaList.at(1), 0);
 
         if (paraList.size() < 4)
         {
@@ -143,94 +104,108 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
             return FALSE;
         }
 
-        if (customParaList.size() == 1)
+        const size_t cSize = cornerList.size();
+        if (cSize > 0)
         {
-            CreateRectangle(paraList, drawList, mainShape, width, height, out);
+            std::vector<double> parsedCorner;
+            switch (cSize)
+            {
+            case 1:
+            {
+                const double corner = MathParser::ParseDouble(cornerList.at(0));
+
+                for (int i = 0; i < 4; i++)
+                    parsedCorner.push_back(corner);
+                break;
+            }
+            case 2:
+            {
+                const double corner1 = MathParser::ParseDouble(cornerList.at(0));
+                const double corner2 = MathParser::ParseDouble(cornerList.at(1));
+
+                parsedCorner.push_back(corner1);
+                parsedCorner.push_back(corner2);
+                parsedCorner.push_back(corner1);
+                parsedCorner.push_back(corner2);
+                break;
+            }
+            case 3:
+            {
+                const double corner2 = MathParser::ParseDouble(cornerList.at(1));
+
+                parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(0)));
+                parsedCorner.push_back(corner2);
+                parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(2)));
+                parsedCorner.push_back(corner2);
+                break;
+            }
+            case 4:
+            {
+                parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(0)));
+                parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(1)));
+                parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(2)));
+                parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(3)));
+                break;
+            }
+            }
+
+            outShape = CreateRectangleCustomCorner(paraList, parsedCorner, out);
         }
-        else if (customParaList.size() > 1)
+        else
         {
-            auto cornerList = Utils::SeparateParameter(customParaList.at(1), NULL);
-            CreateRectangleCustomCorner(paraList, cornerList, drawList, mainShape, width, height, out);
+            outShape = CreateRectangle(paraList, out);
         }
 
 		break;
 	}
 	case POLYGON:
 	{
-		paraList = Utils::SeparateParameter(shapeParas, NULL);
-		const size_t listSize = paraList.size();
-		if (listSize < 4)
+        auto customParaList = Utils::SeparateList(shapeParas, L";", 2, L"");
+        auto paraList = Utils::SeparateParameter(customParaList.at(0), 0);
+        auto cornerList = Utils::SeparateParameter(customParaList.at(1), 0);
+
+		const size_t pSize = paraList.size();
+		if (pSize < 4)
 		{
 			RmLogF(rm, LOG_ERROR, L"Polygon %s: Not enough parameter", shapeParas);
 			return FALSE;
 		}
-		const double origX = MathParser::ParseDouble(paraList[0]);
-		const double origY = MathParser::ParseDouble(paraList[1]);
-		const double side = round(MathParser::ParseDouble(paraList[2]));
+		const double side = MathParser::ParseDouble(paraList.at(2));
 		if (side < 3)
 		{
 			RmLogF(rm, LOG_ERROR, L"Polygon %s: Invalid number of sides.", shapeParas);
 			return FALSE;
 		}
-		const double radiusX = abs(MathParser::ParseDouble(paraList[3]));
-		double radiusY = radiusX;
-		if (listSize > 4) radiusY = abs(MathParser::ParseDouble(paraList[4]));
-		double roundCorner = 0;
-		if (listSize > 5) roundCorner = abs(MathParser::ParseDouble(paraList[5]));
-		double startAngle = 0;
-		if (listSize > 6) startAngle = MathParser::ParseDouble(paraList[6]) * MagickPI / 180;
 
-		Magick::VPathList p;
-		if (roundCorner != 0)
-		{
-			Magick::Coordinate c1(
-				origX + radiusX * cos(MagickPI2 + startAngle),
-				origY - radiusY * sin(MagickPI2 + startAngle)
-			);
-			const double factor = 1 / side;
-			for (int i = 1; i <= side; i++)
-			{
-				double a = (double)i * factor;
-				Magick::Coordinate angPoint(
-					origX + radiusX * cos(a * Magick2PI + MagickPI2 + startAngle),
-					origY - radiusY * sin(a * Magick2PI + MagickPI2 + startAngle)
-				);
-				a = ((double)i + 1.0) * factor;
-				Magick::Coordinate c2(
-					origX + radiusX * cos(a * Magick2PI + MagickPI2 + startAngle),
-					origY - radiusY * sin(a * Magick2PI + MagickPI2 + startAngle)
-				);
-				DrawRoundedCorner(p, angPoint, c1, c2, roundCorner, i == 1);
-				c1 = angPoint;
-			}
-		}
-		else
-		{
-			for (int i = 0; i < side; i++)
-			{
-				const double a = (double)i / side;
-				const double curX = origX + radiusX * cos(a * Magick2PI + MagickPI2 + startAngle);
-				const double curY = origY - radiusY * sin(a * Magick2PI + MagickPI2 + startAngle);
+        double roundCorner = 0;
+        if (pSize > 6) roundCorner = abs(MathParser::ParseDouble(paraList.at(5)));
 
-				if (i == 0)
-					p.push_back(Magick::PathMovetoAbs(Magick::Coordinate(
-						curX, curY
-					)));
-				else
-					p.push_back(Magick::PathLinetoAbs(Magick::Coordinate(
-						curX, curY
-					)));
-			}
-		}
-		p.push_back(Magick::PathClosePath());
-		mainShape = Magick::DrawablePath(p);
-		drawList.push_back(Magick::DrawableFillColor(Magick::Color("white")));
-		width = origX + radiusX + 1;
-		height = origY + radiusY + 1;
-		out.X = (ssize_t)round(origX - radiusX);
-		out.Y = (ssize_t)round(origY - radiusY);
-		out.W = (size_t)ceil(radiusX * 2);
-		out.H = (size_t)ceil(radiusY * 2);
+        const size_t cSize = cornerList.size();
+        std::vector<double> parsedCorner;
+        if (cSize > 0)
+        {
+            if (cSize >= side)
+            {
+                for (int i = 0; i < side; i++)
+                {
+                    parsedCorner.push_back(
+                        MathParser::ParseDouble(cornerList.at(i))
+                    );
+                }
+            }
+            else
+            {
+                RmLogF(rm, LOG_WARNING, L"Polygon: %d custom round corner parameters are not enough for %d sides polygon.", cornerList.size(), static_cast<int>(side));
+            }
+        }
+
+        if (parsedCorner.size() == 0 && roundCorner > 0)
+        {
+            for (int i = 0; i < side; i++)
+                parsedCorner.push_back(roundCorner);
+        }
+
+        outShape = CreatePolygon(paraList, parsedCorner, out);
 		break;
 	}
 	case PATH:
@@ -242,26 +217,25 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
             break;
 		}
 
-        WSVector pathList = Utils::SeparateList(pathString, L"|", NULL);
+        WSVector pathList = Utils::SeparateList(pathString, L"|", 0);
 
-        Magick::VPathList p;
+        Magick::VPathList drawList;
         double curX = 0.0;
         double curY = 0.0;
 
-        //Start point
-        WSVector s = Utils::SeparateParameter(pathList[0], NULL);
-        if (s.size() >= 2)
+        WSVector startPoint = Utils::SeparateParameter(pathList.at(0), 0);
+        if (startPoint.size() >= 2)
         {
-            curX = MathParser::ParseDouble(s[0]);
-            curY = MathParser::ParseDouble(s[1]);
-            p.push_back(Magick::PathMovetoAbs(Magick::Coordinate(
+            curX = MathParser::ParseDouble(startPoint.at(0));
+            curY = MathParser::ParseDouble(startPoint.at(1));
+            drawList.push_back(Magick::PathMovetoAbs(Magick::Coordinate(
                 curX,
                 curY
             )));
         }
         else
         {
-            RmLogF(rm, LOG_ERROR, L"%s is invalid start point.", pathList[0].c_str());
+            RmLogF(rm, LOG_ERROR, L"%s is invalid start point.", pathList.at(0).c_str());
             return FALSE;
         }
 
@@ -277,75 +251,100 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
             ParseInternalVariable(tempPara, out);
 
             LPCWSTR name = tempName.c_str();
-            WSVector segmentList = Utils::SeparateParameter(tempPara, NULL);
+
+            WSVector segmentList = Utils::SeparateParameter(tempPara, 0);
             const size_t segmentSize = segmentList.size();
 
             if (_wcsicmp(name, L"LINETO") == 0)
             {
-                if (segmentSize > 1)
+                if (segmentSize < 2)
                 {
-                    curX = MathParser::ParseDouble(segmentList[0]);
-                    curY = MathParser::ParseDouble(segmentList[1]);
-                    p.push_back(Magick::PathLinetoAbs(Magick::Coordinate(
-                        curX,
-                        curY
-                    )));
+                    RmLogF(rm, LOG_WARNING, L"%s is invalid LineTo segment.", path.c_str());
+                    continue;
                 }
+
+                curX = MathParser::ParseDouble(segmentList.at(0));
+                curY = MathParser::ParseDouble(segmentList.at(1));
+                drawList.push_back(Magick::PathLinetoAbs(Magick::Coordinate(
+                    curX,
+                    curY
+                )));
             }
             else if (_wcsicmp(name, L"ARCTO") == 0)
             {
-                if (segmentSize >= 2)
+                if (segmentSize < 2)
                 {
-                    const double x = MathParser::ParseDouble(segmentList[0]);
-                    const double y = MathParser::ParseDouble(segmentList[1]);
-                    const double dx = x - curX;
-                    const double dy = y - curY;
-                    double xRadius = std::sqrt(dx * dx + dy * dy) / 2.0;
-                    double angle = 0.0;
-                    bool sweep = false;
-                    bool size = false;
-
-                    if (segmentSize > 2) xRadius = MathParser::ParseDouble(segmentList[2]);
-
-                    double yRadius = xRadius;
-
-                    if (segmentSize > 3) yRadius = Utils::ParseNumber(yRadius, segmentList[3].c_str(), MathParser::ParseDouble);
-                    if (segmentSize > 4) angle = Utils::ParseNumber(angle, segmentList[4].c_str(), MathParser::ParseDouble);
-                    if (segmentSize > 5) Utils::ParseBool(sweep, segmentList[5]);
-                    if (segmentSize > 6) Utils::ParseBool(size, segmentList[6]);
-
-                    p.push_back(Magick::PathArcAbs(Magick::PathArcArgs(
-                        xRadius, yRadius,
-                        angle, size, !sweep,
-                        x, y
-                    )));
-
-                    curX = x;
-                    curY = y;
+                    RmLogF(rm, LOG_WARNING, L"%s is invalid ArcTo segment.", path.c_str());
+                    continue;
                 }
+                const double x = MathParser::ParseDouble(segmentList.at(0));
+                const double y = MathParser::ParseDouble(segmentList.at(1));
+                const double dx = x - curX;
+                const double dy = y - curY;
+                double xRadius = std::sqrt(dx * dx + dy * dy) / 2.0;
+                double angle = 0.0;
+                bool sweep = false;
+                bool size = false;
+
+                if (segmentSize > 2)
+                    xRadius = MathParser::ParseDouble(segmentList.at(2));
+
+                double yRadius = xRadius;
+
+                if (segmentSize > 3)
+                {
+                    yRadius = Utils::ParseNumber(
+                        yRadius,
+                        segmentList.at(3).c_str(),
+                        MathParser::ParseDouble
+                    );
+                }
+
+                if (segmentSize > 4)
+                {
+                    angle = Utils::ParseNumber(
+                        angle,
+                        segmentList.at(4).c_str(),
+                        MathParser::ParseDouble
+                    );
+                }
+
+                if (segmentSize > 5)
+                    Utils::ParseBool(sweep, segmentList.at(5));
+                if (segmentSize > 6)
+                    Utils::ParseBool(size, segmentList.at(6));
+
+                drawList.push_back(Magick::PathArcAbs(Magick::PathArcArgs(
+                    xRadius, yRadius,
+                    angle, size, !sweep,
+                    x, y
+                )));
+
+                curX = x;
+                curY = y;
             }
             else if (_wcsicmp(name, L"CURVETO") == 0)
             {
                 if (segmentSize < 4)
                 {
-                    RmLogF(rm, LOG_WARNING, L"%s %s is invalid CurveTo segment.", name, tempPara);
+                    RmLogF(rm, LOG_WARNING, L"%s is invalid CurveTo segment.", path.c_str());
                     continue;
                 }
-                const double x = MathParser::ParseDouble(segmentList[0]);
-                const double y = MathParser::ParseDouble(segmentList[1]);
-                const double cx1 = MathParser::ParseDouble(segmentList[2]);
-                const double cy1 = MathParser::ParseDouble(segmentList[3]);
+                const double x = MathParser::ParseDouble(segmentList.at(0));
+                const double y = MathParser::ParseDouble(segmentList.at(1));
+                const double cx1 = MathParser::ParseDouble(segmentList.at(2));
+                const double cy1 = MathParser::ParseDouble(segmentList.at(3));
                 if (segmentSize < 6)
                 {
-                    p.push_back(Magick::PathQuadraticCurvetoAbs(Magick::PathQuadraticCurvetoArgs(
+                    drawList.push_back(Magick::PathQuadraticCurvetoAbs(Magick::PathQuadraticCurvetoArgs(
                         cx1, cy1, x, y
                     )));
                 }
                 else
                 {
-                    const double cx2 = MathParser::ParseDouble(segmentList[4]);
-                    const double cy2 = MathParser::ParseDouble(segmentList[5]);
-                    p.push_back(Magick::PathCurvetoAbs(Magick::PathCurvetoArgs(
+                    const double cx2 = MathParser::ParseDouble(segmentList.at(4));
+                    const double cy2 = MathParser::ParseDouble(segmentList.at(5));
+                    drawList.push_back(Magick::PathCurvetoAbs(Magick::PathCurvetoArgs(
                         cx1, cy1, cx2, cy2, x, y
                     )));
                 }
@@ -356,24 +355,24 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
             {
                 if (segmentSize < 2)
                 {
-                    RmLogF(rm, LOG_WARNING, L"%s %s is invalid path segment.", name, tempPara);
+                    RmLogF(rm, LOG_WARNING, L"%s is invalid SmoothCurveTo segment.", path.c_str());
                     continue;
                 }
-                const double x = MathParser::ParseDouble(segmentList[0]);
-                const double y = MathParser::ParseDouble(segmentList[1]);
+                const double x = MathParser::ParseDouble(segmentList.at(0));
+                const double y = MathParser::ParseDouble(segmentList.at(1));
 
                 if (segmentSize > 3)
                 {
-                    const double cx = MathParser::ParseDouble(segmentList[2]);
-                    const double cy = MathParser::ParseDouble(segmentList[3]);
+                    const double cx = MathParser::ParseDouble(segmentList.at(2));
+                    const double cy = MathParser::ParseDouble(segmentList.at(3));
 
-                    p.push_back(PathCubicSmoothCurvetoAbs(Magick::PathQuadraticCurvetoArgs(
+                    drawList.push_back(PathCubicSmoothCurvetoAbs(Magick::PathQuadraticCurvetoArgs(
                         cx, cy, x, y
                     )));
                 }
                 else
                 {
-                    p.push_back(Magick::PathSmoothQuadraticCurvetoAbs(Magick::Coordinate(
+                    drawList.push_back(Magick::PathSmoothQuadraticCurvetoAbs(Magick::Coordinate(
                         x, y
                     )));
                 }
@@ -383,7 +382,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
             else if (_wcsicmp(name, L"CLOSEPATH") == 0)
             {
                 if (MathParser::ParseBool(tempPara))
-                    p.push_back(Magick::PathClosePath());
+                    drawList.push_back(Magick::PathClosePath());
             }
             else
             {
@@ -395,11 +394,16 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
             if (curX > imgX2) imgX2 = curX;
             if (curY > imgY2) imgY2 = curY;
         }
-        mainShape = Magick::DrawablePath(p);
-        drawList.push_back(Magick::DrawableFillColor(INVISIBLE));
+
         strokeWidth = 2;
-        width = imgX2;
-        height = imgY2;
+
+        outShape = new Shape{
+            Magick::DrawablePath(drawList),
+            Magick::DrawableList{ Magick::DrawableFillColor(INVISIBLE) },
+            imgX2,
+            imgY2
+        };
+
         out.X = (ssize_t)ceil(imgX1);
         out.Y = (ssize_t)ceil(imgY1);
         out.W = (size_t)ceil(imgX2 - imgX1);
@@ -408,10 +412,10 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 	}
 	}
 
-	int strokeAlign = 0;
-
-	//Default color
-	Magick::Drawable strokeColor = Magick::DrawableStrokeColor(Magick::Color("black"));
+    if (outShape == nullptr)
+    {
+        return FALSE;
+    }
 
 	for (auto &option : config)
 	{
@@ -428,8 +432,8 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		if (_wcsicmp(name, L"CANVAS") == 0)
 		{
 			WSVector valList = Utils::SeparateList(tempPara, L",", 2);
-            const size_t tempW = MathParser::ParseSizeT(valList[0]);
-            const size_t tempH = MathParser::ParseSizeT(valList[1]);
+            const size_t tempW = MathParser::ParseSizeT(valList.at(0));
+            const size_t tempH = MathParser::ParseSizeT(valList.at(1));
 
             if (tempW <= 0 || tempH <= 0)
             {
@@ -445,22 +449,22 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		else if (_wcsicmp(name, L"OFFSET") == 0)
 		{
 			WSVector valList = Utils::SeparateParameter(tempPara, 2);
-			drawList.push_back(Magick::DrawableTranslation(
-				MathParser::ParseDouble(valList[0]),
-				MathParser::ParseDouble(valList[1])
+			outShape->attributes.push_back(Magick::DrawableTranslation(
+				MathParser::ParseDouble(valList.at(0)),
+				MathParser::ParseDouble(valList.at(1))
 			));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"ROTATE") == 0)
 		{
-			drawList.push_back(Magick::DrawableRotation(
+			outShape->attributes.push_back(Magick::DrawableRotation(
 				MathParser::ParseDouble(tempPara)
 			));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"COLOR") == 0)
 		{
-			drawList.push_back(Magick::DrawableFillColor(
+			outShape->attributes.push_back(Magick::DrawableFillColor(
                 Utils::ParseColor(tempPara)
             ));
 			isSetting = TRUE;
@@ -469,11 +473,11 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		{
 			const int index = Utils::NameToIndex(tempPara);
 			if (index >= 0 && index < imgList.size())
-				out.img.fillPattern(imgList[index].img);
+				out.img.fillPattern(imgList.at(index).img);
 		}
 		else if (_wcsicmp(name, L"ANTIALIAS") == 0)
 		{
-			drawList.push_back(Magick::DrawableStrokeAntialias(
+			outShape->attributes.push_back(Magick::DrawableStrokeAntialias(
                 MathParser::ParseBool(tempPara)
             ));
 			isSetting = TRUE;
@@ -488,7 +492,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		else if (_wcsicmp(name, L"STROKEWIDTH") == 0)
 		{
 			strokeWidth = abs(MathParser::ParseDouble(tempPara));
-			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth));
+			outShape->attributes.push_back(Magick::DrawableStrokeWidth(strokeWidth));
 			isSetting = TRUE;
 		}
 		else if (_wcsicmp(name, L"STROKEALIGN") == 0)
@@ -519,7 +523,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 			{
 				RmLog(rm, LOG_WARNING, L"Invalid StrokeLineJoin value. Miter line join is applied.");
 			}
-			drawList.push_back(Magick::DrawableStrokeLineJoin(lj));
+			outShape->attributes.push_back(Magick::DrawableStrokeLineJoin(lj));
 		}
 		else if (_wcsicmp(name, L"STROKELINECAP") == 0)
 		{
@@ -534,7 +538,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 			{
 				RmLog(rm, LOG_WARNING, L"Invalid StrokeLineCap value. Flat line cap is applied.");
 			}
-			drawList.push_back(Magick::DrawableStrokeLineCap(lc));
+			outShape->attributes.push_back(Magick::DrawableStrokeLineCap(lc));
 		}
 
 		if (isSetting)
@@ -546,31 +550,31 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		if (!customCanvas.isValid())
 		{
             customCanvas = Magick::Geometry(
-                (size_t)(width + strokeWidth),
-                (size_t)(height + strokeWidth)
+                (size_t)(outShape->canvasWidth + strokeWidth),
+                (size_t)(outShape->canvasHeight + strokeWidth)
             );
             customCanvas.aspect(true);
 		}
 
         out.img.scale(customCanvas);
 
-		drawList.push_back(mainShape);
+		outShape->attributes.push_back(outShape->shape);
 
 		if (strokeWidth == 0)
 		{
-			drawList.push_back(Magick::DrawableStrokeColor(INVISIBLE));
-			out.img.draw(drawList);
+			outShape->attributes.push_back(Magick::DrawableStrokeColor(INVISIBLE));
+			out.img.draw(outShape->attributes);
 		}
 		else if (strokeWidth != 0 && strokeAlign != 0)
 		{
-			drawList.push_back(strokeColor);
+			outShape->attributes.push_back(strokeColor);
 			Magick::Image temp = out.img;
 			const double strokeWidth2 = strokeWidth * 2;
-			drawList.push_back(Magick::DrawableStrokeWidth(strokeWidth2));
-			out.img.draw(drawList);
+			outShape->attributes.push_back(Magick::DrawableStrokeWidth(strokeWidth2));
+			out.img.draw(outShape->attributes);
 
-			drawList.push_back(Magick::DrawableStrokeWidth(0));
-			temp.draw(drawList);
+			outShape->attributes.push_back(Magick::DrawableStrokeWidth(0));
+			temp.draw(outShape->attributes);
 			if (strokeAlign == 1)
 			{
 				out.X -= (ssize_t)ceil(strokeWidth);
@@ -590,9 +594,11 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 			out.Y -= (ssize_t)ceil(strokeWidth / 2);
 			out.W += (size_t)ceil(strokeWidth);
 			out.H += (size_t)ceil(strokeWidth);
-			drawList.push_back(strokeColor);
-			out.img.draw(drawList);
+			outShape->attributes.push_back(strokeColor);
+			out.img.draw(outShape->attributes);
 		}
+
+        delete outShape;
 	}
 	catch (Magick::Exception &error_)
 	{
@@ -603,8 +609,13 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 	return TRUE;
 }
 
-void DrawRoundedCorner(Magick::VPathList &drawList, const Magick::Coordinate &angularPoint,
-	Magick::Coordinate &p1, Magick::Coordinate &p2, double radius, bool start)
+void DrawRoundedCorner(
+    Magick::VPathList &drawList,
+    const Magick::Coordinate &angularPoint,
+	const Magick::Coordinate &p1,
+    const Magick::Coordinate &p2,
+    double radius,
+    bool start)
 {
 	// Vector 1
 	const double dx1 = angularPoint.x() - p1.x();
@@ -638,12 +649,12 @@ void DrawRoundedCorner(Magick::VPathList &drawList, const Magick::Coordinate &an
 	auto p2Cross = GetProportionPoint(angularPoint, segment, length2, dx2, dy2);
 
 	if (start) drawList.push_back(Magick::PathMovetoAbs(p1Cross));
-	drawList.push_back(Magick::PathLinetoAbs(p1Cross));
+    drawList.push_back(Magick::PathLinetoAbs(p1Cross));
 
     const double diameter = 2 * radius;
     const double degreeFactor = 180 / MagickPI;
 
-	drawList.push_back(Magick::PathArcAbs(Magick::PathArcArgs(
+    drawList.push_back(Magick::PathArcAbs(Magick::PathArcArgs(
 		radius, radius, 0, false, false, p2Cross.x(), p2Cross.y())));
 }
 
@@ -663,153 +674,238 @@ Magick::Coordinate GetProportionPoint(Magick::Coordinate point, double segment,
 	);
 }
 
-void CreateRectangle(
-    WSVector &paraList,
-    std::vector<Magick::Drawable> &shapeAttributes,
-    Magick::Drawable &outShape,
-    double &outWidth,
-    double &outHeight,
-    ImgContainer &out)
+Shape* CreateEllipse(WSVector &inParaList, ImgContainer &outImg)
 {
-    const size_t pSize = paraList.size();
+    const size_t pSize = inParaList.size();
+    const double x = MathParser::ParseDouble(inParaList.at(0));
+    const double y = MathParser::ParseDouble(inParaList.at(1));
+    const double radiusX = MathParser::ParseDouble(inParaList.at(2));
 
-    ShapeRectangle r;
-    r.x = MathParser::ParseDouble(paraList[0]);
-    r.y = MathParser::ParseDouble(paraList[1]);
-    r.w = MathParser::ParseDouble(paraList[2]);
-    r.h = MathParser::ParseDouble(paraList[3]);
+    double start = 0;
+    double end = 360;
+    double radiusY = radiusX;
 
-    if (pSize > 4) r.cornerX = MathParser::ParseDouble(paraList[4]);
+    if (pSize > 3) radiusY = MathParser::ParseDouble(inParaList.at(3));
 
-    r.cornerY = r.cornerX;
-    if (pSize > 5) r.cornerY = MathParser::ParseDouble(paraList[5]);
+    if (pSize > 4) start = MathParser::ParseDouble(inParaList.at(4));
 
-    if (r.cornerX == 0 && r.cornerY == 0)
-        outShape = r.Create();
-    else
-        outShape = r.CreateRound();
+    if (pSize > 5) end = MathParser::ParseDouble(inParaList.at(5));
 
-    shapeAttributes.push_back(Magick::DrawableFillColor(Magick::Color("white")));
+    outImg.X = (ssize_t)(x - abs(radiusX));
+    outImg.Y = (ssize_t)(y - abs(radiusY));
+    outImg.W = (size_t)(radiusX * 2.0);
+    outImg.H = (size_t)(radiusY * 2.0);
 
-    if (r.w > 0)
-    {
-        outWidth = r.w + r.x + 1;
-        out.X = (ssize_t)r.x;
-    }
-    else
-    {
-        outWidth = r.x + 1;
-        out.X = (ssize_t)(r.x + r.w);
-    }
-    out.W = (size_t)abs(r.w);
-
-    if (r.h > 0)
-    {
-        outHeight = r.h + r.y + 1;
-        out.Y = (ssize_t)r.y;
-    }
-    else
-    {
-        outHeight = r.y + 1;
-        out.Y = (ssize_t)(r.y + r.h);
-    }
-    out.H = (size_t)abs(r.h);
+    return new Shape{
+        Magick::DrawableEllipse(x, y, radiusX, radiusY, start, end),
+        Magick::DrawableList{ Magick::DrawableFillColor(Magick::Color("white")) },
+        x + abs(radiusX) + 1,
+        y + abs(radiusY) + 1,
+    };
 }
 
-void CreateRectangleCustomCorner(
-    WSVector &paraList,
-    WSVector &cornerList,
-    std::vector<Magick::Drawable> &shapeAttributes,
-    Magick::Drawable &outShape,
-    double &outWidth,
-    double &outHeight,
-    ImgContainer &out)
+Shape* CreateRectangle(WSVector &inParaList, ImgContainer &outImg)
 {
-    const double x = MathParser::ParseDouble(paraList.at(0));
-    const double y = MathParser::ParseDouble(paraList.at(1));
-    const double w = MathParser::ParseDouble(paraList.at(2));
-    const double h = MathParser::ParseDouble(paraList.at(3));
+    const size_t pSize = inParaList.size();
 
-    std::vector<double> parsedCorner;
-    if (cornerList.size() == 1)
-    {
-        const double corner = MathParser::ParseDouble(cornerList.at(0));
-        for (int i = 0; i < 4; i++)
-            parsedCorner.push_back(corner);
-    }
-    else if (cornerList.size() == 2)
-    {
-        const double corner1 = MathParser::ParseDouble(cornerList.at(0));
-        const double corner2 = MathParser::ParseDouble(cornerList.at(1));
+    const double x = MathParser::ParseDouble(inParaList.at(0));
+    const double y = MathParser::ParseDouble(inParaList.at(1));
+    const double w = MathParser::ParseDouble(inParaList.at(2));
+    const double h = MathParser::ParseDouble(inParaList.at(3));
 
-        parsedCorner.push_back(corner1);
-        parsedCorner.push_back(corner2);
-        parsedCorner.push_back(corner1);
-        parsedCorner.push_back(corner2);
-    }
-    else if (cornerList.size() == 3)
-    {
-        const double corner2 = MathParser::ParseDouble(cornerList.at(1));
-        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(0)));
-        parsedCorner.push_back(corner2);
-        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(2)));
-        parsedCorner.push_back(corner2);
-    }
-    else if (cornerList.size() >= 4)
-    {
-        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(0)));
-        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(1)));
-        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(2)));
-        parsedCorner.push_back(MathParser::ParseDouble(cornerList.at(3)));
-    }
+    double cornerX = 0.0;
+    if (pSize > 4) cornerX = MathParser::ParseDouble(inParaList.at(4));
 
-    Magick::VPathList p;
+    double cornerY = cornerX;
+    if (pSize > 5) cornerY = MathParser::ParseDouble(inParaList.at(5));
 
-    Magick::Coordinate c1(x + w, y);
-    Magick::Coordinate angPoint(x, y);
-    Magick::Coordinate c2(x, y + h);
-    DrawRoundedCorner(p, angPoint, c1, c2, parsedCorner.at(0), true);
+    Magick::Drawable outShape;
+    if (cornerX == 0 && cornerY == 0)
+        outShape = Magick::DrawableRectangle(x, y, x + w, y + h);
+    else
+        outShape = Magick::DrawableRoundRectangle(x, y, x + w, y + h, cornerX, cornerY);
 
-    c1 = angPoint;
-    angPoint = c2;
-    c2 = Magick::Coordinate(x + w, y + h);
-    DrawRoundedCorner(p, angPoint, c1, c2, parsedCorner.at(3), false);
-
-    c1 = angPoint;
-    angPoint = c2;
-    c2 = Magick::Coordinate(x + w, y);
-    DrawRoundedCorner(p, angPoint, c1, c2, parsedCorner.at(2), false);
-
-    c1 = angPoint;
-    angPoint = c2;
-    c2 = Magick::Coordinate(x, y);
-    DrawRoundedCorner(p, angPoint, c1, c2, parsedCorner.at(1), false);
-
-    p.push_back(Magick::PathClosePath());
-    outShape = Magick::DrawablePath(p);
-    shapeAttributes.push_back(Magick::DrawableFillColor(Magick::Color("white")));
-
+    double outWidth = 0.0;
     if (w > 0)
     {
         outWidth = w + x + 1;
-        out.X = (ssize_t)x;
+        outImg.X = (ssize_t)x;
     }
     else
     {
         outWidth = x + 1;
-        out.X = (ssize_t)(x + w);
+        outImg.X = (ssize_t)(x + w);
     }
-    out.W = (size_t)abs(w);
+    outImg.W = (size_t)abs(w);
 
+    double outHeight = 0.0;
     if (h > 0)
     {
         outHeight = h + y + 1;
-        out.Y = (ssize_t)y;
+        outImg.Y = (ssize_t)y;
     }
     else
     {
         outHeight = y + 1;
-        out.Y = (ssize_t)(y + h);
+        outImg.Y = (ssize_t)(y + h);
     }
-    out.H = (size_t)abs(h);
+    outImg.H = (size_t)abs(h);
+
+    return new Shape{
+        outShape,
+        Magick::DrawableList{ Magick::DrawableFillColor(Magick::Color("white")) },
+        outWidth,
+        outHeight
+    };
+}
+
+Shape* CreateRectangleCustomCorner(WSVector &inParaList, std::vector<double> &inCornerList, ImgContainer &outImg)
+{
+    double x = MathParser::ParseDouble(inParaList.at(0));
+    double y = MathParser::ParseDouble(inParaList.at(1));
+    double w = MathParser::ParseDouble(inParaList.at(2));
+    double h = MathParser::ParseDouble(inParaList.at(3));
+
+    if (w < 0)
+    {
+        x += w;
+        w = abs(w);
+    }
+
+    if (h < 0)
+    {
+        y += h;
+        h = abs(h);
+    }
+
+    Magick::VPathList pathList;
+
+    Magick::Coordinate point1(x + w, y);
+    Magick::Coordinate angularPoint(x, y);
+    Magick::Coordinate point2(x, y + h);
+    DrawRoundedCorner(pathList, angularPoint, point1, point2, inCornerList.at(0), true);
+
+    point1 = angularPoint;
+    angularPoint = point2;
+    point2 = Magick::Coordinate(x + w, y + h);
+    DrawRoundedCorner(pathList, angularPoint, point1, point2, inCornerList.at(3), false);
+
+    point1 = angularPoint;
+    angularPoint = point2;
+    point2 = Magick::Coordinate(x + w, y);
+    DrawRoundedCorner(pathList, angularPoint, point1, point2, inCornerList.at(2), false);
+
+    point1 = angularPoint;
+    angularPoint = point2;
+    point2 = Magick::Coordinate(x, y);
+    DrawRoundedCorner(pathList, angularPoint, point1, point2, inCornerList.at(1), false);
+
+    pathList.push_back(Magick::PathClosePath());
+
+    outImg.X = (ssize_t)x;
+    outImg.Y = (ssize_t)y;
+    outImg.W = (size_t)abs(w);
+    outImg.H = (size_t)abs(h);
+
+    return new Shape{
+        Magick::DrawablePath(pathList),
+        Magick::DrawableList{ Magick::DrawableFillColor(Magick::Color("white")) },
+        w + x + 1,
+        h + y + 1
+    };
+}
+
+Shape* CreatePolygon(WSVector &inParaList, std::vector<double> &inCornerList, ImgContainer &outImg)
+{
+    const size_t pSize = inParaList.size();
+    const double origX = MathParser::ParseDouble(inParaList.at(0));
+    const double origY = MathParser::ParseDouble(inParaList.at(1));
+    const double side = round(MathParser::ParseDouble(inParaList.at(2)));
+    const double radiusX = abs(MathParser::ParseDouble(inParaList.at(3)));
+    double radiusY = radiusX;
+    if (pSize > 4)
+    {
+        // Allow user to skip radiusY parameter
+        radiusY = Utils::ParseNumber(
+            radiusY,
+            inParaList.at(4).c_str(),
+            MathParser::ParseDouble
+        );
+    }
+    double startAngle = 0;
+    if (pSize > 5) startAngle = MathParser::ParseDouble(inParaList.at(6)) * MagickPI / 180;
+
+    Magick::VPathList pathList;
+    if (inCornerList.size() > 0)
+    {
+        const double startRad = MagickPI2 + startAngle;
+        Magick::Coordinate point1(
+            origX + radiusX * cos(startRad),
+            origY - radiusY * sin(startRad)
+        );
+
+        const double factor = 1 / side;
+
+        const double angPointRad = factor * Magick2PI + startRad;
+        Magick::Coordinate angularPoint(
+            origX + radiusX * cos(angPointRad),
+            origY - radiusY * sin(angPointRad)
+        );
+
+        for (double i = 1; i <= side; i++)
+        {
+            const double rad = (i + 1.0) * factor * Magick2PI + startRad;
+            Magick::Coordinate point2(
+                origX + radiusX * cos(rad),
+                origY - radiusY * sin(rad)
+            );
+
+            const size_t cornerIndex = (size_t)(side - (i - 1)) % (size_t)side;
+
+            DrawRoundedCorner(
+                pathList, angularPoint, point1, point2,
+                inCornerList.at(cornerIndex),
+                i == 1
+            );
+
+            point1 = angularPoint;
+            angularPoint = point2;
+        }
+    }
+    else
+    {
+        for (double i = 0; i < side; i++)
+        {
+            const double rad = (i / side) * Magick2PI + MagickPI2 + startAngle;
+            const double curX = origX + radiusX * cos(rad);
+            const double curY = origY - radiusY * sin(rad);
+
+            if (i == 0)
+            {
+                pathList.push_back(Magick::PathMovetoAbs(Magick::Coordinate(
+                    curX, curY
+                )));
+            }
+            else
+            {
+                pathList.push_back(Magick::PathLinetoAbs(Magick::Coordinate(
+                    curX, curY
+                )));
+            }
+        }
+    }
+
+    pathList.push_back(Magick::PathClosePath());
+
+    outImg.X = (ssize_t)round(origX - radiusX);
+    outImg.Y = (ssize_t)round(origY - radiusY);
+    outImg.W = (size_t)ceil(radiusX * 2);
+    outImg.H = (size_t)ceil(radiusY * 2);
+
+    return new Shape{
+        Magick::DrawablePath(pathList),
+        Magick::DrawableList{ Magick::DrawableFillColor(Magick::Color("white")) },
+        origX + radiusX + 1,
+        origY + radiusY + 1
+    };
 }

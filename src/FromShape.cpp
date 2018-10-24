@@ -178,7 +178,7 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 		}
 
         double roundCorner = 0;
-        if (pSize > 6) roundCorner = abs(MathParser::ParseDouble(paraList.at(5)));
+        if (pSize > 6) roundCorner = abs(MathParser::ParseDouble(paraList.at(6)));
 
         const size_t cSize = cornerList.size();
         std::vector<double> parsedCorner;
@@ -833,7 +833,7 @@ Shape* CreatePolygon(WSVector &inParaList, std::vector<double> &inCornerList, Im
         );
     }
     double startAngle = 0;
-    if (pSize > 5) startAngle = MathParser::ParseDouble(inParaList.at(6)) * MagickPI / 180;
+    if (pSize > 5) startAngle = MathParser::ParseDouble(inParaList.at(5)) * MagickPI / 180;
 
     Magick::VPathList pathList;
     if (inCornerList.size() > 0)

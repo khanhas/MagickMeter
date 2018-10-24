@@ -10,7 +10,7 @@ function Build
 
     $config = "/p:Configuration=Release"
     $x64 = "/p:Platform=x64"
-    $x86 = "/p:Platform=Win32"
+    $x86 = "/p:Platform=x86"
 
     switch($target)
     {

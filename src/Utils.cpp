@@ -1,4 +1,5 @@
 #include "MagickMeter.h"
+#include <sstream>
 
 void Utils::GetNamePara(std::wstring input, std::wstring& name, std::wstring& para)
 {
@@ -207,11 +208,11 @@ Magick::Color Utils::ParseColor(std::wstring raw)
 std::wstring Utils::ColorToWString(Magick::Color c)
 {
 	Magick::ColorRGB rgb = c;
-	std::wstring s;
-	s += std::to_wstring((int)round(rgb.red() * 255)) + L",";
-	s += std::to_wstring((int)round(rgb.green() * 255)) + L",";
-	s += std::to_wstring((int)round(rgb.blue() * 255));
-	return s;
+	std::wostringstream s;
+    s << static_cast<int>(round(rgb.red() * 255)) << L","
+        << static_cast<int>(round(rgb.green() * 255)) << L","
+        << static_cast<int>(round(rgb.blue() * 255));
+	return s.str();
 }
 
 std::wstring Utils::StringToWString(const std::string& str)

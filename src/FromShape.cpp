@@ -558,23 +558,27 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 
         out.img.scale(customCanvas);
 
-		outShape->attributes.push_back(outShape->shape);
-
 		if (strokeWidth == 0)
 		{
 			outShape->attributes.push_back(Magick::DrawableStrokeColor(INVISIBLE));
-			out.img.draw(outShape->attributes);
+            outShape->attributes.push_back(outShape->shape);
+            out.img.draw(outShape->attributes);
 		}
 		else if (strokeWidth != 0 && strokeAlign != 0)
 		{
 			outShape->attributes.push_back(strokeColor);
 			Magick::Image temp = out.img;
 			const double strokeWidth2 = strokeWidth * 2;
-			outShape->attributes.push_back(Magick::DrawableStrokeWidth(strokeWidth2));
-			out.img.draw(outShape->attributes);
+            auto doubleWidth = outShape->attributes;
+            doubleWidth.push_back(Magick::DrawableStrokeWidth(strokeWidth2));
+            doubleWidth.push_back(outShape->shape);
+            out.img.draw(doubleWidth);
 
-			outShape->attributes.push_back(Magick::DrawableStrokeWidth(0));
-			temp.draw(outShape->attributes);
+            auto noWidth = outShape->attributes;
+            noWidth.push_back(Magick::DrawableStrokeWidth(0));
+            noWidth.push_back(outShape->shape);
+            temp.draw(noWidth);
+
 			if (strokeAlign == 1)
 			{
 				out.X -= (ssize_t)ceil(strokeWidth);
@@ -595,7 +599,8 @@ BOOL Measure::CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &confi
 			out.W += (size_t)ceil(strokeWidth);
 			out.H += (size_t)ceil(strokeWidth);
 			outShape->attributes.push_back(strokeColor);
-			out.img.draw(outShape->attributes);
+            outShape->attributes.push_back(outShape->shape);
+            out.img.draw(outShape->attributes);
 		}
 
         delete outShape;

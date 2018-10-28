@@ -3,7 +3,7 @@
 [![GitHub release](https://img.shields.io/github/release/khanhas/MagickMeter/all.svg?colorB=97CA00?label=version)](https://github.com/khanhas/MagickMeter/releases/latest) [![Github All Releases](https://img.shields.io/github/downloads/khanhas/MagickMeter/total.svg?colorB=97CA00)](https://github.com/khanhas/MagickMeter/releases)  
 
 ## How to install:
-#### 1. Download ImageMagick: https://www.imagemagick.org/script/download.php 
+#### 1. Download ImageMagick: https://www.imagemagick.org/script/download.php#windows
 
 ![Download](https://i.imgur.com/gfjRZxh.png)
 

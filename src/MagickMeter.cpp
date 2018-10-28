@@ -1,4 +1,7 @@
 #include "MagickMeter.h"
+#include <sstream>
+
+int Measure::refCount = 0;
 
 ImgType GetType(std::wstring input) noexcept
 {
@@ -19,21 +22,21 @@ PLUGIN_EXPORT void Initialize(void** data, void* rm)
 {
 	Measure* measure = new Measure;
 	*data = measure;
+    Measure::refCount++;
+
 	measure->rm = rm;
-	std::wstring mesName = RmGetMeasureName(rm);
 	measure->skin = RmGetSkin(rm);
 	Magick::InitializeMagick("\\");
 
-	std::wstring tempFolder = RmReplaceVariables(rm, L"%temp%");
-	std::wstring disName = RmGetSkinName(rm);
-	size_t slashPos = disName.find(L"\\", 0);
-	while (slashPos != std::wstring::npos)
-	{
-		disName.replace(slashPos, 1, L"_");
-		slashPos = disName.find(L"\\", slashPos);
-	}
-	measure->outputW = tempFolder + L"\\" + disName + L"_" + mesName + L".bmp";
-	measure->outputA = Utils::WStringToString(measure->outputW);
+    if (Magick::EnableOpenCL())
+    {
+        RmLog(measure->rm, LOG_DEBUG, L"MagickMeter: OpenCL supported");
+    }
+
+    std::ostringstream fileName;
+    fileName << std::tmpnam(nullptr) << ".bmp";
+    measure->outputA = fileName.str();
+    measure->outputW = Utils::StringToWString(fileName.str());
 }
 
 PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
@@ -43,7 +46,7 @@ PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
 		return;
 	}
 
-	Measure* measure = (Measure*)data;
+	const auto measure = static_cast<Measure*>(data);
 
     measure->imgList.clear();
     measure->imgList.shrink_to_fit();
@@ -52,6 +55,7 @@ PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
     int inpCount = 1;
     while (true)
     {
+
         if (!measure->GetImage(imgName, TRUE))
             break;
         imgName = L"Image" + std::to_wstring(++inpCount);
@@ -67,14 +71,14 @@ PLUGIN_EXPORT double Update(void* data)
 
 PLUGIN_EXPORT LPCWSTR GetString(void* data)
 {
-    const Measure* measure = (Measure*)data;
+    const auto measure = static_cast<Measure*>(data);
 
     return measure->outputW.c_str();
 }
 
 PLUGIN_EXPORT void ExecuteBang(void* data, LPCWSTR args)
 {
-    Measure* measure = (Measure*)data;
+    const auto measure = static_cast<Measure*>(data);
     if (_wcsicmp(args, L"Update") == 0)
     {
         Reload(data, measure->rm, nullptr);
@@ -101,26 +105,20 @@ PLUGIN_EXPORT void ExecuteBang(void* data, LPCWSTR args)
 
 PLUGIN_EXPORT void Finalize(void* data)
 {
-    Measure* measure = (Measure*)data;
-    //Magick::TerminateMagick();
+    const auto measure = static_cast<Measure*>(data);
     delete measure;
-}
 
-ImgContainer::ImgContainer(int _index)
-{
-    img = ONEPIXEL;
-    img.alpha(true);
-    img.backgroundColor(INVISIBLE);
-
-    index = _index;
-
-    colorList.resize(5, INVISIBLE);
+    Measure::refCount--;
+    if (Measure::refCount == 0)
+    {
+        Magick::TerminateMagick();
+    }
 }
 
 Measure::~Measure()
 {
     std::error_code error;
-    if (std::experimental::filesystem::exists(outputW, error))
+    if (std::filesystem::exists(outputW, error))
         DeleteFile(outputW.c_str());
 }
 
@@ -169,7 +167,7 @@ BOOL Measure::GetImage(std::wstring imageName, BOOL isPush)
 	if (wcslen(rawSetting) == 0) return FALSE;
 
 	WSVector config = Utils::SeparateList(rawSetting, L"|", NULL);
-	if (config.empty()) return FALSE;
+    if (config.empty()) return FALSE;
 
 	ParseExtend(config, imageName);
 
@@ -230,8 +228,6 @@ BOOL Measure::GetImage(std::wstring imageName, BOOL isPush)
         return FALSE;
     }
 
-	curImg.colorList = GenColor(curImg.img, 5);
-
 	if (type == COMBINE || type == CLONE)
 	{
 		Magick::Geometry newBound;
@@ -252,7 +248,7 @@ BOOL Measure::GetImage(std::wstring imageName, BOOL isPush)
 		}
 	}
 
-	for (auto &option : config)
+    for (auto &option : config)
 	{
         if (option.empty())
             continue;
@@ -887,7 +883,7 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 	}
 }
 
-void Measure::ParseInternalVariable(std::wstring &outSetting, const ImgContainer &srcImg) const
+void Measure::ParseInternalVariable(std::wstring &outSetting, ImgContainer &srcImg)
 {
 	size_t start = outSetting.find(L"{");
 	while (start != std::wstring::npos)
@@ -901,7 +897,7 @@ void Measure::ParseInternalVariable(std::wstring &outSetting, const ImgContainer
             const int index = Utils::NameToIndex(v[0]);
 			if (index != -1 && index <= srcImg.index)
 			{
-				const ImgContainer* tempStruct = nullptr;
+				ImgContainer* tempStruct = nullptr;
 				if (index == srcImg.index)
 					tempStruct = &srcImg;
 				else
@@ -925,25 +921,33 @@ void Measure::ParseInternalVariable(std::wstring &outSetting, const ImgContainer
 				{
 					c = std::to_wstring(tempStruct->H);
 				}
-				else if (_wcsicmp(para, L"COLORBG") == 0)
+
+                if (_wcsnicmp(para, L"COLOR", 5) == 0 &&
+                    tempStruct->colorList.size() < 5
+                )
+                {
+                    GenColor(tempStruct->img, 5, tempStruct->colorList);
+                }
+
+				if (_wcsicmp(para, L"COLORBG") == 0)
 				{
-					c = Utils::ColorToWString(tempStruct->colorList[0]);
+					c = Utils::ColorToWString(tempStruct->colorList.at(0));
 				}
 				else if (_wcsicmp(para, L"COLOR1") == 0)
 				{
-					c = Utils::ColorToWString(tempStruct->colorList[1]);
+					c = Utils::ColorToWString(tempStruct->colorList.at(1));
 				}
 				else if (_wcsicmp(para, L"COLOR2") == 0)
 				{
-					c = Utils::ColorToWString(tempStruct->colorList[2]);
+					c = Utils::ColorToWString(tempStruct->colorList.at(2));
 				}
 				else if (_wcsicmp(para, L"COLOR3") == 0)
 				{
-					c = Utils::ColorToWString(tempStruct->colorList[3]);
+					c = Utils::ColorToWString(tempStruct->colorList.at(3));
 				}
 				else if (_wcsicmp(para, L"COLORFG") == 0)
 				{
-					c = Utils::ColorToWString(tempStruct->colorList[4]);
+					c = Utils::ColorToWString(tempStruct->colorList.at(4));
 				}
 
 				if (!c.empty())
@@ -974,7 +978,7 @@ void Measure::ParseInternalVariable(std::wstring &outSetting, const ImgContainer
         }
 	}
 }
-std::vector<Magick::Color> GenColor(Magick::Image img, size_t totalColor)
+void GenColor(Magick::Image img, size_t totalColor, std::vector<Magick::Color> &outContainer)
 {
 	Magick::Geometry smallSize(25, 25);
 	smallSize.percent(true);
@@ -982,14 +986,14 @@ std::vector<Magick::Color> GenColor(Magick::Image img, size_t totalColor)
 	img.quantizeColors(totalColor);
 	img.quantize();
 	Magick::Image uniqueColor = img.uniqueColors();
-	std::vector<Magick::Color> list;
+
+    outContainer.clear();
+    outContainer.shrink_to_fit();
 
 	for (int i = 1; i <= uniqueColor.columns(); i++)
-        list.push_back(uniqueColor.pixelColor(i, 1));
+        outContainer.push_back(uniqueColor.pixelColor(i, 1));
 
 	//Fill missing color. with last generated color.
-	while (list.size() < totalColor)
-        list.push_back(list[list.size() - 1]);
-
-	return list;
+	while (outContainer.size() < totalColor)
+        outContainer.push_back(outContainer.at(outContainer.size() - 1));
 }

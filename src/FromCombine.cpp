@@ -70,34 +70,35 @@ const std::map<LPCWSTR, Magick::CompositeOperator> compOperationMap{
     {L"SRCOVERCOMP",        Magick::SrcOverCompositeOp},
     {L"THRESHOLD",          Magick::ThresholdCompositeOp},
     {L"VIVIDLIGHT",         Magick::VividLightCompositeOp},
-    {L"XOR",                Magick::XorCompositeOp}
+    {L"XOR",                Magick::XorCompositeOp},
+    {L"STEREO",             Magick::CompositeOperator::StereoCompositeOp}
 };
 
 BOOL Measure::CreateCombine(LPCWSTR baseImage, WSVector &config, ImgContainer &out)
 {
-	const int baseIndex = Utils::NameToIndex(baseImage);
-	if (baseIndex != -1 && baseIndex < imgList.size())
-	{
-		out.img = imgList[baseIndex].img;
-		imgList[baseIndex].isCombined = TRUE;
-	}
-	else
-	{
-		RmLogF(rm, 2, L"Combine: %s is invalid.", baseImage);
-		return FALSE;
-	}
+    const int baseIndex = Utils::NameToIndex(baseImage);
+    if (baseIndex != -1 && baseIndex < imgList.size())
+    {
+        out.img = imgList.at(baseIndex).img;
+        imgList.at(baseIndex).isCombined = TRUE;
+    }
+    else
+    {
+        RmLogF(rm, 2, L"Combine: %s is invalid.", baseImage);
+        return FALSE;
+    }
 
-	for (auto &option : config)
-	{
+    for (auto &option : config)
+    {
         if (option.empty())
             continue;
 
         std::wstring tempName;
         std::wstring tempPara;
-		Utils::GetNamePara(option, tempName, tempPara);
+        Utils::GetNamePara(option, tempName, tempPara);
 
-		LPCWSTR name = tempName.c_str();
-		LPCWSTR parameter = tempPara.c_str();
+        LPCWSTR name = tempName.c_str();
+        LPCWSTR parameter = tempPara.c_str();
 
         auto compOp = std::find_if(
             compOperationMap.begin(),
@@ -115,7 +116,7 @@ BOOL Measure::CreateCombine(LPCWSTR baseImage, WSVector &config, ImgContainer &o
         // Found valid Composite operation
         option.clear();
 
-		const int index = Utils::NameToIndex(tempPara);
+        const int index = Utils::NameToIndex(tempPara);
 
         if (index < 0 || index >= imgList.size())
         {
@@ -156,7 +157,7 @@ BOOL Measure::CreateCombine(LPCWSTR baseImage, WSVector &config, ImgContainer &o
             LogError(error_);
             return FALSE;
         }
-	}
+    }
 
     return TRUE;
 }

@@ -1,9 +1,8 @@
 #pragma once
+#include <windows.h>
 #include <locale>
 #include <codecvt>
 #include <vector>
-#include <windows.h>
-#include <Strsafe.h>
 #include <filesystem>
 #include <algorithm>
 #include "Magick++.h"
@@ -31,20 +30,33 @@ typedef enum
 } ImgType;
 
 ImgType GetType(std::wstring input) noexcept;
-std::vector<Magick::Color> GenColor(Magick::Image img, size_t totalColor);
+void GenColor(Magick::Image img, size_t totalColor, std::vector<Magick::Color> &outContainer);
 
 class ImgContainer
 {
 public:
-    ImgContainer(int _index);
+    ImgContainer(int _index) :
+        index(_index),
+        isCombined(FALSE),
+        isIgnored(FALSE),
+        W(0),
+        H(0),
+        X(0),
+        Y(0)
+    {
+        img = ONEPIXEL;
+        img.alpha(true);
+        img.backgroundColor(INVISIBLE);
+    };
+
 	Magick::Image	img;
-	int				index = 0;
-	BOOL			isCombined = FALSE;
-	BOOL			isIgnored = FALSE;
-	size_t			W = 0;
-	size_t			H = 0;
-	ssize_t			X = 0;
-	ssize_t			Y = 0;
+	int				index;
+	BOOL			isCombined;
+	BOOL			isIgnored;
+	size_t			W;
+	size_t			H;
+	ssize_t			X;
+	ssize_t			Y;
     std::vector<Magick::Color> colorList;
 };
 
@@ -52,6 +64,7 @@ class Measure
 {
 public:
     Measure::~Measure();
+    static int refCount;
 	void* skin = nullptr;
 	void* rm = nullptr;
 	std::string outputA;
@@ -68,7 +81,7 @@ public:
 	BOOL CreateGradient(LPCWSTR gradType, WSVector &config, ImgContainer &out);
 
 	BOOL ParseEffect(ImgContainer &img, std::wstring name, std::wstring para);
-	void ParseInternalVariable(std::wstring &rawSetting, const ImgContainer &srcImg) const;
+	void ParseInternalVariable(std::wstring &rawSetting, ImgContainer &srcImg);
 	void ParseExtend(
 		WSVector &parentVector,
 		std::wstring parentName,

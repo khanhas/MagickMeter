@@ -696,10 +696,10 @@ Shape* CreateEllipse(WSVector &inParaList, ImgContainer &outImg)
 
     if (pSize > 5) end = MathParser::ParseDouble(inParaList.at(5));
 
-    outImg.X = (ssize_t)(x - abs(radiusX));
-    outImg.Y = (ssize_t)(y - abs(radiusY));
-    outImg.W = (size_t)(radiusX * 2.0);
-    outImg.H = (size_t)(radiusY * 2.0);
+    outImg.X = static_cast<ssize_t>(x - abs(radiusX));
+    outImg.Y = static_cast<ssize_t>(y - abs(radiusY));
+    outImg.W = static_cast<size_t>(radiusX * 2.0);
+    outImg.H = static_cast<size_t>(radiusY * 2.0);
 
     return new Shape{
         Magick::DrawableEllipse(x, y, radiusX, radiusY, start, end),
@@ -713,10 +713,22 @@ Shape* CreateRectangle(WSVector &inParaList, ImgContainer &outImg)
 {
     const size_t pSize = inParaList.size();
 
-    const double x = MathParser::ParseDouble(inParaList.at(0));
-    const double y = MathParser::ParseDouble(inParaList.at(1));
-    const double w = MathParser::ParseDouble(inParaList.at(2));
-    const double h = MathParser::ParseDouble(inParaList.at(3));
+    double x = MathParser::ParseDouble(inParaList.at(0));
+    double y = MathParser::ParseDouble(inParaList.at(1));
+    double w = MathParser::ParseDouble(inParaList.at(2));
+    double h = MathParser::ParseDouble(inParaList.at(3));
+
+    if (w < 0)
+    {
+        x += w;
+        w = abs(w);
+    }
+
+    if (h < 0)
+    {
+        y += h;
+        h = abs(h);
+    }
 
     double cornerX = 0.0;
     if (pSize > 4) cornerX = MathParser::ParseDouble(inParaList.at(4));
@@ -731,36 +743,17 @@ Shape* CreateRectangle(WSVector &inParaList, ImgContainer &outImg)
         outShape = Magick::DrawableRoundRectangle(x, y, x + w, y + h, cornerX, cornerY);
 
     double outWidth = 0.0;
-    if (w > 0)
-    {
-        outWidth = w + x + 1;
-        outImg.X = (ssize_t)x;
-    }
-    else
-    {
-        outWidth = x + 1;
-        outImg.X = (ssize_t)(x + w);
-    }
-    outImg.W = (size_t)abs(w);
 
-    double outHeight = 0.0;
-    if (h > 0)
-    {
-        outHeight = h + y + 1;
-        outImg.Y = (ssize_t)y;
-    }
-    else
-    {
-        outHeight = y + 1;
-        outImg.Y = (ssize_t)(y + h);
-    }
-    outImg.H = (size_t)abs(h);
+    outImg.X = static_cast<ssize_t>(x);
+    outImg.Y = static_cast<ssize_t>(y);
+    outImg.W = static_cast<size_t>(w);
+    outImg.H = static_cast<size_t>(h);
 
     return new Shape{
         outShape,
         Magick::DrawableList{ Magick::DrawableFillColor(Magick::Color("white")) },
-        outWidth,
-        outHeight
+        w + x + 1,
+        h + y + 1
     };
 }
 

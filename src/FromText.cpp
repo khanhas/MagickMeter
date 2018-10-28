@@ -1,4 +1,5 @@
 #include "MagickMeter.h"
+
 const enum TextAlign {
     INVALIDALIGN,
 
@@ -93,11 +94,11 @@ BOOL Measure::CreateText(std::wstring text, WSVector &config, ImgContainer &out)
 			{
 				std::wstring fontDir = RmReplaceVariables(rm, L"#@#Fonts\\");
 				fontDir += tempPara.substr(1);
-				if (std::experimental::filesystem::exists(fontDir))
+				if (std::filesystem::exists(fontDir))
 					tempImg.font(Utils::WStringToString(fontDir));
 			}
             // Direct path to font file
-			else if (std::experimental::filesystem::exists(parameter))
+			else if (std::filesystem::exists(parameter))
 			{
 				tempImg.font(Utils::WStringToString(tempPara));
 			}

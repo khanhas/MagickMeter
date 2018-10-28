@@ -31,7 +31,7 @@ BEGIN
         BLOCK "040904E4"
         BEGIN
             VALUE "FileVersion", PLUGIN_VERSION
-            VALUE "LegalCopyright", "? " PLUGIN_COPYRIGHT
+            VALUE "LegalCopyright", "✨ " PLUGIN_COPYRIGHT
 
             // Don't change the entries below!
             VALUE "ProductName", "Rainmeter"

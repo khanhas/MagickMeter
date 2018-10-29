@@ -33,10 +33,9 @@ PLUGIN_EXPORT void Initialize(void** data, void* rm)
         RmLog(measure->rm, LOG_DEBUG, L"MagickMeter: OpenCL supported");
     }
 
-    std::ostringstream fileName;
-    fileName << std::tmpnam(nullptr) << ".bmp";
-    measure->outputA = fileName.str();
-    measure->outputW = Utils::StringToWString(fileName.str());
+    std::string tempFile = std::tmpnam(nullptr);
+    measure->outputA = tempFile + ".bmp";
+    measure->outputW = Utils::StringToWString(measure->outputA);
 }
 
 PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)

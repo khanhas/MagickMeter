@@ -38,3 +38,4 @@ gyp/
 build/
 bin/
 obj/
+*.aps

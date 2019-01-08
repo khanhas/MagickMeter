@@ -64,6 +64,7 @@
     <ClCompile Include="src\FromText.cpp" />
     <ClCompile Include="src\MagickMeter.cpp" />
     <ClCompile Include="src\MathParser.cpp" />
+    <ClCompile Include="Config.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />

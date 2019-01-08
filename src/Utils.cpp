@@ -1,21 +1,41 @@
 #include "MagickMeter.h"
 #include <sstream>
+#include <wctype.h>
 
-void Utils::GetNamePara(std::wstring input, std::wstring& name, std::wstring& para)
+bool Utils::IsEqual(std::wstring a, std::wstring b)
+{
+    if (a.length() == b.length())
+    {
+        return std::equal(
+            a.begin(),
+            a.end(),
+            b.begin(),
+            [](wchar_t c, wchar_t d) noexcept -> bool {
+                return towupper(c) == towupper(d);
+            }
+        );
+    }
+
+    return false;
+}
+
+Config Utils::GetNamePara(std::wstring input)
 {
 	const size_t firstSpace = input.find_first_of(L" \t\r\n");
 	if (firstSpace == std::wstring::npos)
 	{
-		if (!input.empty())
-			name = input;
-		else
-			name = L"";
-		para = L"";
-		return;
+        return Config{
+            input,
+            L"",
+            TRUE
+        };
 	}
 
-	name = input.substr(0, firstSpace);
-    para = input.substr(input.find_first_not_of(L" \t\r\n", firstSpace + 1));
+    return Config{
+        input.substr(0, firstSpace),
+        input.substr(input.find_first_not_of(L" \t\r\n", firstSpace + 1)),
+        FALSE
+    };
 }
 
 const int Utils::NameToIndex(std::wstring name)
@@ -61,13 +81,22 @@ std::vector<std::wstring> Utils::SeparateList(
 
 	while (end != std::wstring::npos)
 	{
-		auto element = rawString.substr(start, end - start);
-		element = TrimString(element);
+        const auto prevChar = rawString.at(end - 1);
+        // Ignore escaped separator
+        if (prevChar == L'\\') {
+            rawString.erase(end - 1, 1);
+            end = rawString.find(separator, end);
+            continue;
+        }
 
-		if (!element.empty())
-		{
-			vectorList.push_back(element);
-		}
+        auto element = rawString.substr(start, end - start);
+        element = TrimString(element);
+
+        if (!element.empty())
+        {
+            vectorList.push_back(element);
+        }
+
 		start = end + 1;
 		end = rawString.find(separator, start);
 	}
@@ -138,6 +167,20 @@ std::vector<std::wstring> Utils::SeparateParameter(
 		resultList.push_back(defValue);
 
 	return resultList;
+}
+
+std::vector<Config> Utils::ParseConfig(const std::wstring raw)
+{
+    WSVector rawConfig = Utils::SeparateList(raw, L"|", NULL);
+    std::vector<Config> config;
+    std::transform(
+        rawConfig.begin(),
+        rawConfig.end(),
+        std::back_inserter(config),
+        Utils::GetNamePara
+    );
+
+    return config;
 }
 
 Magick::Color Utils::ParseColor(std::wstring raw)

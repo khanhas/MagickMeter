@@ -16,6 +16,15 @@ namespace MathParser {
 
 	typedef double(*SingleArgFunction)(double arg);
 	typedef const WCHAR* (*MultiArgFunction)(int paramcnt, double* args, double* result);
+    typedef bool(*GetValueFunc)(const WCHAR* str, int len, double* value, void* context);
+
+    const WCHAR* Check(const WCHAR* formula) noexcept;
+    const WCHAR* CheckedParse(std::wstring input, double* result);
+    const WCHAR* Parse(
+        const WCHAR* formula, double* result,
+        GetValueFunc getValue = nullptr, void* getValueContext = nullptr);
+
+    bool IsDelimiter(WCHAR ch);
 
 	enum class Operator : uint8_t
 	{
@@ -85,16 +94,16 @@ namespace MathParser {
 		BYTE length;
 	};
 
-	static double frac(double x);
-	static double rad(double deg);
-	static double deg(double rad);
-	static double sgn(double x);
-	static double neg(double x);
-	static const WCHAR* Min(int paramcnt, double* args, double* result);
-	static const WCHAR* Max(int paramcnt, double* args, double* result);
-	static const WCHAR* Clamp(int paramcnt, double* args, double* result);
-	static const WCHAR* round(int paramcnt, double* args, double* result);
-	static const WCHAR* ATan2(int paramcnt, double* args, double* result);
+	static double frac(double x) noexcept;
+	static double rad(double deg) noexcept;
+	static double deg(double rad) noexcept;
+	static double sgn(double x) noexcept;
+	static double neg(double x) noexcept;
+	static const WCHAR* Min(int paramcnt, double* args, double* result) noexcept;
+	static const WCHAR* Max(int paramcnt, double* args, double* result) noexcept;
+	static const WCHAR* Clamp(int paramcnt, double* args, double* result) noexcept;
+	static const WCHAR* Round(int paramcnt, double* args, double* result) noexcept;
+	static const WCHAR* ATan2(int paramcnt, double* args, double* result) noexcept;
 
 	enum {
 		FUNC_ATAN2,			// note: must be before atan so it gets matched first!
@@ -143,7 +152,7 @@ namespace MathParser {
 		{ L"trunc", &trunc, 5 },                       // FUNC_TRUNC
 		{ L"floor", &floor, 5 },                       // FUNC_FLOOR
 		{ L"ceil", &ceil, 4 },                         // FUNC_CEIL
-		{ L"round", (SingleArgFunction)&round, 5 },    // FUNC_ROUND
+		{ L"round", (SingleArgFunction)&Round, 5 },    // FUNC_ROUND
 		{ L"asin", &asin, 4 },                         // FUNC_ASIN
 		{ L"acos", &acos, 4 },                         // FUNC_ACOS
 		{ L"rad", &rad, 3 },                           // FUNC_RAD
@@ -242,8 +251,11 @@ namespace MathParser {
 	const WCHAR* eLogicErr = L"Logical expression error";
 	const WCHAR* eInvPrmCnt = L"Invalid function parameter count";
 
-	const WCHAR* Check(const WCHAR* formula)
+	const WCHAR* Check(const WCHAR* formula ) noexcept
 	{
+        if (formula == nullptr)
+            return nullptr;
+
 		int brackets = 0;
 
 		// Brackets Matching
@@ -285,29 +297,27 @@ namespace MathParser {
 
 	int ParseInt(std::wstring input)
 	{
-		double output = ParseDouble(input);
-		round(0, &output, &output);
-		return (int)output;
+		const double output = round(ParseDouble(input));
+		return static_cast<int>(output);
 	}
 
     size_t ParseSizeT(std::wstring input)
     {
-        double output = ParseDouble(input);
-        round(0, &output, &output);
+        double output = round(ParseDouble(input));
+        if (output < 0)
+            output = fabs(output);
         return static_cast<size_t>(output);
     }
 
     ssize_t ParseSSizeT(std::wstring input)
     {
-        double output = ParseDouble(input);
-        round(0, &output, &output);
+        const double output = round(ParseDouble(input));
         return static_cast<ssize_t>(output);
     }
 
 	BOOL ParseBool(std::wstring input)
 	{
-		int num = ParseInt(input);
-		return num == 1;
+		return ParseInt(input) == 1;
 	}
 
 	const WCHAR* Parse(
@@ -333,7 +343,7 @@ namespace MathParser {
 				return eInternal;
 			}
 
-			Token token = GetNextToken(lexer);
+			const Token token = GetNextToken(lexer);
 			--parser.obrDist;
 			switch (token)
 			{
@@ -907,33 +917,33 @@ namespace MathParser {
 	//  Misc
 	// -----------------------------------------------------------------------------------------------
 
-	static double frac(double x)
+	static double frac(double x) noexcept
 	{
 		double y;
 		return modf(x, &y);
 	}
 
-	static double rad(double deg)
+	static double rad(double deg) noexcept
 	{
 		return (deg / 180.0) * M_PI;
 	}
 
-	static double deg(double rad)
+	static double deg(double rad) noexcept
 	{
 		return rad * (180.0 / M_PI);
 	}
 
-	static double sgn(double x)
+	static double sgn(double x) noexcept
 	{
 		return (x > 0.0) ? 1.0 : (x < 0.0) ? -1.0 : 0.0;
 	}
 
-	static double neg(double x)
+	static double neg(double x) noexcept
 	{
 		return -x;
 	}
 
-	static const WCHAR* Min(int paramcnt, double* args, double* result)
+	static const WCHAR* Min(int paramcnt, double* args, double* result) noexcept
 	{
 		if (paramcnt == 2)
 		{
@@ -946,7 +956,7 @@ namespace MathParser {
 		return eInvPrmCnt;
 	}
 
-	static const WCHAR* Max(int paramcnt, double* args, double* result)
+	static const WCHAR* Max(int paramcnt, double* args, double* result) noexcept
 	{
 		if (paramcnt == 2)
 		{
@@ -959,7 +969,7 @@ namespace MathParser {
 		return eInvPrmCnt;
 	}
 
-	static const WCHAR* Clamp(int paramcnt, double* args, double* result)
+	static const WCHAR* Clamp(int paramcnt, double* args, double* result) noexcept
 	{
 		if (paramcnt == 3)
 		{
@@ -974,7 +984,7 @@ namespace MathParser {
 	}
 
 	// "Advanced" round function; second argument - sharpness
-	static const WCHAR* round(int paramcnt, double* args, double* result)
+	static const WCHAR* Round(int paramcnt, double* args, double* result) noexcept
 	{
 		int sharpness;
 		if (paramcnt == 1)
@@ -1010,7 +1020,7 @@ namespace MathParser {
 	}
 
 	// wrapper for standard math lib atan2
-	static const WCHAR* ATan2(int paramcnt, double* args, double* result)
+	static const WCHAR* ATan2(int paramcnt, double* args, double* result) noexcept
 	{
 		if (paramcnt == 2)
 		{

@@ -74,37 +74,30 @@ const std::map<LPCWSTR, Magick::CompositeOperator> compOperationMap{
     {L"STEREO",             Magick::CompositeOperator::StereoCompositeOp}
 };
 
-BOOL Measure::CreateCombine(LPCWSTR baseImage, WSVector &config, ImgContainer &out)
+BOOL Measure::CreateCombine(std::shared_ptr<ImgContainer> out)
 {
-    const int baseIndex = Utils::NameToIndex(baseImage);
+    const int baseIndex = Utils::NameToIndex(out->config.at(0).para);
     if (baseIndex != -1 && baseIndex < imgList.size())
     {
-        out.img = imgList.at(baseIndex).img;
-        imgList.at(baseIndex).isCombined = TRUE;
+        out->img = imgList.at(baseIndex)->img;
+        imgList.at(baseIndex)->isCombined = TRUE;
     }
     else
     {
-        RmLogF(rm, 2, L"Combine: %s is invalid.", baseImage);
+        RmLogF(rm, 2, L"Combine: %s is invalid.", out->config.at(0).para);
         return FALSE;
     }
 
-    for (auto &option : config)
+    for (auto &option : out->config)
     {
-        if (option.empty())
+        if (option.isApplied)
             continue;
-
-        std::wstring tempName;
-        std::wstring tempPara;
-        Utils::GetNamePara(option, tempName, tempPara);
-
-        LPCWSTR name = tempName.c_str();
-        LPCWSTR parameter = tempPara.c_str();
 
         auto compOp = std::find_if(
             compOperationMap.begin(),
             compOperationMap.end(),
-            [name](const std::pair<LPCWSTR, Magick::CompositeOperator> &i) noexcept {
-                return _wcsicmp(name, i.first) == 0;
+            [option](const std::pair<LPCWSTR, Magick::CompositeOperator> &i) {
+                return Utils::IsEqual(option.name, i.first);
             }
         );
 
@@ -114,43 +107,43 @@ BOOL Measure::CreateCombine(LPCWSTR baseImage, WSVector &config, ImgContainer &o
         }
 
         // Found valid Composite operation
-        option.clear();
+        option.isApplied = TRUE;
 
-        const int index = Utils::NameToIndex(tempPara);
+        const int index = Utils::NameToIndex(option.para);
 
         if (index < 0 || index >= imgList.size())
         {
-            RmLogF(rm, 2, L"Combine: %s is invalid.", baseImage);
+            RmLogF(rm, 2, L"Combine: %s is invalid.", option.para);
             return FALSE;
         }
 
-        ImgContainer* childImage = &imgList[index];
+        ImgContainer* childImage = &*imgList.at(index);
 
         childImage->isCombined = TRUE;
 
         //Extend main image size
         const size_t newW = max(
             childImage->img.columns(),
-            out.img.columns()
+            out->img.columns()
         );
         const size_t newH = max(
             childImage->img.rows(),
-            out.img.rows()
+            out->img.rows()
         );
 
         Magick::Geometry newSize(newW, newH);
 
         try
         {
-            Magick::Image temp = Magick::Image(out.img);
+            Magick::Image temp = Magick::Image(out->img);
 
-            out.img = Magick::Image(newSize, INVISIBLE);
-            out.img.composite(temp, 0, 0, Magick::OverCompositeOp);
+            out->img = Magick::Image(newSize, INVISIBLE);
+            out->img.composite(temp, 0, 0, Magick::OverCompositeOp);
 
             temp = Magick::Image(newSize, INVISIBLE);
             temp.composite(childImage->img, 0, 0, Magick::OverCompositeOp);
 
-            out.img.composite(temp, 0, 0, compOp->second);
+            out->img.composite(temp, 0, 0, compOp->second);
         }
         catch (Magick::Exception &error_)
         {

@@ -2,22 +2,17 @@
 #include <filesystem>
 #include <sstream>
 
-BOOL Measure::CreateFromFile(LPCWSTR baseFile, WSVector &config, ImgContainer &out)
+BOOL Measure::CreateFromFile(std::shared_ptr<ImgContainer> out)
 {
     std::ostringstream targetFile;
     BOOL isScreenshot = FALSE;
 
-    if (_wcsnicmp(baseFile, L"SCREENSHOT", 10) == 0)
+    if (out->config.at(0).Equal(L"SCREENSHOT"))
     {
         isScreenshot = TRUE;
-        if (config.size() > 0 && _wcsnicmp(config[0].c_str(), L"AUTOHIDE", 8) == 0)
-        {
-            isScreenshot = MathParser::ParseBool(config[0].substr(8));
-            config[0].clear();
-        }
         targetFile << "screenshot:";
 
-        std::wstring baseString = baseFile;
+        std::wstring baseString = out->config.at(0).para;
         const size_t monitorFlag = baseString.find(L"@", 10);
 
         if (monitorFlag != std::wstring::npos &&
@@ -26,53 +21,56 @@ BOOL Measure::CreateFromFile(LPCWSTR baseFile, WSVector &config, ImgContainer &o
             const int monitorIndex = MathParser::ParseInt(baseString.substr(11));
             targetFile << "[" << monitorIndex << "]";
         }
+
+        if (out->config.size() > 1 && out->config.at(1).Match(L"AUTOHIDE"))
+        {
+            isScreenshot = out->config.at(1).ToBool();
+            out->config.at(1).isApplied = TRUE;
+        }
     }
-    else if (_wcsicmp(baseFile, L"CLIPBOARD") == 0)
+    else if (out->config.at(0).Equal(L"CLIPBOARD"))
     {
         targetFile << "clipboard:";
     }
     else // baseFile is a file path or URL
     {
-        targetFile << Utils::WStringToString(baseFile);
+        targetFile << out->config.at(0).ToString();
     }
 
     BOOL isDefinedSize = FALSE;
     Magick::Geometry defineSize;
 
-    for (auto &option : config)
+    for (auto &option : out->config)
     {
-        if (option.empty())
+        if (option.isApplied)
             continue;
 
-        std::wstring tempName;
-        std::wstring tempPara;
-        Utils::GetNamePara(option, tempName, tempPara);
-        ParseInternalVariable(tempPara, out);
+        ParseInternalVariable(option.para, out);
 
-        LPCWSTR name = tempName.c_str();
 
-        if (_wcsicmp(name, L"RENDERSIZE") == 0)
+        if (option.Match(L"RENDERSIZE"))
         {
-            WSVector imgSize = Utils::SeparateParameter(tempPara, 3);
+            WSVector imgSize = option.ToList(3);
 
-            const size_t width = MathParser::ParseSizeT(imgSize[0]);
-            const size_t height = MathParser::ParseSizeT(imgSize[1]);
+            const size_t width = MathParser::ParseSizeT(imgSize.at(0));
+            const size_t height = MathParser::ParseSizeT(imgSize.at(1));
 
             if (width <= 0 && height <= 0)
             {
-                RmLogF(rm, 2, L"%s is invalid RenderSize. Render image at normal size.", tempPara);
+                RmLogF(rm, 2, L"%s is invalid RenderSize. Render image at normal size.", option.para.c_str());
                 isDefinedSize = FALSE;
             }
             else
             {
                 if (width > 0) defineSize.width(width);
                 if (height > 0) defineSize.height(height);
-                const int resizeType = MathParser::ParseInt(imgSize[2]);
-                Utils::SetGeometryMode(resizeType, defineSize);
+
+                Utils::SetGeometryMode(MathParser::ParseInt(imgSize.at(2)), defineSize);
+
                 isDefinedSize = TRUE;
             }
 
-            option.clear();
+            option.isApplied = TRUE;
         }
     }
 
@@ -82,23 +80,25 @@ BOOL Measure::CreateFromFile(LPCWSTR baseFile, WSVector &config, ImgContainer &o
 
         if (isDefinedSize)
 		{
-			out.img.read(defineSize, targetFile.str()); // Why it just works with SVG?
-			out.img.resize(defineSize);
+			out->img.read(defineSize, targetFile.str()); // Why it just works with SVG?
+			out->img.resize(defineSize);
 		}
 		else
 		{
-			out.img.read(targetFile.str());
+			out->img.read(targetFile.str());
 		}
 
 		if (isScreenshot) RmExecute(skin, L"!SetTransparency 255");
 
-		if (!out.img.isValid()) return FALSE;
+		if (!out->img.isValid()) return FALSE;
 
-		out.img.strip();
-		out.img.alpha(true);
+		out->img.strip();
+		out->img.alpha(true);
 
-		out.W = out.img.columns();
-		out.H = out.img.rows();
+        out->geometry = Magick::Geometry{
+            out->img.columns(),
+            out->img.rows()
+        };
 	}
 	catch(Magick::Exception &error_)
 	{

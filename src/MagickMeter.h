@@ -32,31 +32,40 @@ typedef enum
 ImgType GetType(std::wstring input) noexcept;
 void GenColor(Magick::Image img, size_t totalColor, std::vector<Magick::Color> &outContainer);
 
+class Config {
+public:
+    std::wstring name;
+    std::wstring para;
+    BOOL isApplied;
+    // Match name
+    BOOL Match(LPCWSTR input);
+    // Match para
+    BOOL Equal(LPCWSTR input);
+    WSVector ToList(int minItems = 0, LPCWSTR defVal = L"0");
+    Magick::Color ToColor();
+    BOOL ToBool();
+    std::string ToString();
+    double ToDouble();
+    int ToInt();
+    size_t ToSizeT();
+    ssize_t ToSSizeT();
+};
+
 class ImgContainer
 {
 public:
-    ImgContainer(int _index) :
+    ImgContainer(INT _index, std::vector<Config> _config) :
         index(_index),
-        isCombined(FALSE),
-        isIgnored(FALSE),
-        W(0),
-        H(0),
-        X(0),
-        Y(0)
-    {
-        img = ONEPIXEL;
-        img.alpha(true);
-        img.backgroundColor(INVISIBLE);
-    };
+        config(_config),
+        img(ONEPIXEL)
+    {};
 
-	Magick::Image	img;
-	int				index;
-	BOOL			isCombined;
-	BOOL			isIgnored;
-	size_t			W;
-	size_t			H;
-	ssize_t			X;
-	ssize_t			Y;
+	Magick::Image	    img;
+    std::vector<Config> config;
+	INT			        index;
+	BOOL			    isCombined = FALSE;
+	BOOL			    isIgnored = FALSE;
+    Magick::Geometry    geometry;
     std::vector<Magick::Color> colorList;
 };
 
@@ -69,21 +78,22 @@ public:
 	void* rm = nullptr;
 	std::string outputA;
 	std::wstring outputW;
-	std::vector<ImgContainer> imgList;
+	std::vector<std::shared_ptr<ImgContainer>> imgList;
 
     void Compose();
-    BOOL GetImage(std::wstring imageName, BOOL isPush);
+    BOOL Measure::GetImage(std::shared_ptr<ImgContainer> curImg);
 
-	BOOL CreateFromFile(LPCWSTR baseFile, WSVector &config, ImgContainer &out);
-	BOOL CreateText(std::wstring text, WSVector &config, ImgContainer &out);
-	BOOL CreateShape(ImgType shapeType, LPCWSTR shapeParas, WSVector &config, ImgContainer &out);
-	BOOL CreateCombine(LPCWSTR baseImage, WSVector &config, ImgContainer &out);
-	BOOL CreateGradient(LPCWSTR gradType, WSVector &config, ImgContainer &out);
+	BOOL CreateFromFile(std::shared_ptr<ImgContainer> out);
+	BOOL CreateText(std::shared_ptr<ImgContainer> out);
+	BOOL CreateShape(ImgType shapeType, std::shared_ptr<ImgContainer> out);
+	BOOL CreateCombine(std::shared_ptr<ImgContainer> out);
+	BOOL CreateGradient(std::shared_ptr<ImgContainer> out);
+    BOOL CreateConicalGradient(std::shared_ptr<ImgContainer> out);
 
-	BOOL ParseEffect(ImgContainer &img, std::wstring name, std::wstring para);
-	void ParseInternalVariable(std::wstring &rawSetting, ImgContainer &srcImg);
+	BOOL ParseEffect(ImgContainer &img, Config &option);
+	void ParseInternalVariable(std::wstring &rawSetting, std::shared_ptr<ImgContainer> srcImg);
 	void ParseExtend(
-		WSVector &parentVector,
+		std::vector<Config> &parentVector,
 		std::wstring parentName,
 		BOOL isRecursion = FALSE) const;
 
@@ -92,16 +102,6 @@ public:
 
 namespace MathParser
 {
-	typedef bool(*GetValueFunc)(const WCHAR* str, int len, double* value, void* context);
-
-	const WCHAR* Check(const WCHAR* formula);
-	const WCHAR* CheckedParse(std::wstring input, double* result);
-	const WCHAR* Parse(
-		const WCHAR* formula, double* result,
-		GetValueFunc getValue = nullptr, void* getValueContext = nullptr);
-
-	bool IsDelimiter(WCHAR ch);
-
 	double ParseDouble(std::wstring input);
 	int ParseInt(std::wstring input);
 	BOOL ParseBool(std::wstring input);
@@ -111,6 +111,7 @@ namespace MathParser
 
 namespace Utils
 {
+    bool IsEqual(std::wstring a, std::wstring b);
 	std::string WStringToString(const std::wstring& wstr);
 	std::wstring StringToWString(const std::string& str);
 	std::vector<std::wstring> SeparateList(
@@ -126,28 +127,26 @@ namespace Utils
 	std::wstring ColorToWString(Magick::Color c);
 	std::wstring TrimString(std::wstring bloatedString);
 	const int NameToIndex(std::wstring name);
-	void GetNamePara(
-		std::wstring input,
-		std::wstring& name,
-		std::wstring& para);
+	Config GetNamePara(std::wstring input);
+    std::vector<Config> ParseConfig(std::wstring raw);
     void SetGeometryMode(int raw, Magick::Geometry &out);
 
 	static auto ParseNumber = [](auto var, const WCHAR* value, auto* func) -> decltype(var)
 	{
 		if (_wcsnicmp(value, L"*", 1) == 0) return var;
-		return (decltype(var))func(value);
+		return static_cast<decltype(var)>(func(value));
 	};
 
 	static void ParseBool(bool &var, std::wstring value)
 	{
 		if (_wcsnicmp(value.c_str(), L"*", 1) != 0)
-			var = static_cast<bool>(MathParser::ParseBool(value));
+			var = MathParser::ParseBool(value) ? true : false;
 	};
 
 	static auto ParseNumber2 = [](const WCHAR* value, auto defVal, auto* func) -> decltype(defVal)
 	{
 		if (_wcsnicmp(value, L"*", 1) == 0) return defVal;
-		return (decltype(defVal))func(value);
+		return static_cast<decltype(defVal)>(func(value));
 	};
 };
 

@@ -1,36 +1,53 @@
 #include "MagickMeter.h"
 #include <sstream>
+#include "MagickCore\opencl.h"
+#include <ctime>
 
 int Measure::refCount = 0;
 
-ImgType GetType(std::wstring input) noexcept
+ImgType GetType(Config option)
 {
-	LPCWSTR inP = input.c_str();
-	if		(_wcsnicmp(inP, L"FILE", 4) == 0)			return NORMAL;
-	else if (_wcsnicmp(inP, L"TEXT", 4) == 0)			return TEXT;
-	else if (_wcsnicmp(inP, L"PATH", 4) == 0)			return PATH;
-	else if (_wcsnicmp(inP, L"CLONE", 5) == 0)			return CLONE;
-	else if (_wcsnicmp(inP, L"ELLIPSE", 7) == 0)		return ELLIPSE;
-	else if (_wcsnicmp(inP, L"POLYGON", 7) == 0)		return POLYGON;
-	else if (_wcsnicmp(inP, L"COMBINE", 7) == 0)		return COMBINE;
-	else if (_wcsnicmp(inP, L"GRADIENT", 8) == 0)		return GRADIENT;
-	else if (_wcsnicmp(inP, L"RECTANGLE", 9) == 0)		return RECTANGLE;
-	else												return NOTYPE;
+	if		(option.Match(L"FILE"))			return NORMAL;
+	else if (option.Match(L"TEXT"))			return TEXT;
+	else if (option.Match(L"PATH"))			return PATH;
+	else if (option.Match(L"CLONE"))		return CLONE;
+	else if (option.Match(L"ELLIPSE"))		return ELLIPSE;
+	else if (option.Match(L"POLYGON"))		return POLYGON;
+	else if (option.Match(L"COMBINE"))		return COMBINE;
+	else if (option.Match(L"GRADIENT"))		return GRADIENT;
+	else if (option.Match(L"RECTANGLE"))	return RECTANGLE;
+	else									return NOTYPE;
 }
 
 PLUGIN_EXPORT void Initialize(void** data, void* rm)
 {
-	Measure* measure = new Measure;
-	*data = measure;
+	auto measure = new Measure;
     Measure::refCount++;
-
+	*data = measure;
 	measure->rm = rm;
 	measure->skin = RmGetSkin(rm);
-	Magick::InitializeMagick("\\");
 
+	Magick::InitializeMagick("\\");
     if (Magick::EnableOpenCL())
     {
         RmLog(measure->rm, LOG_DEBUG, L"MagickMeter: OpenCL supported");
+        size_t count = 0;
+        auto devices = MagickCore::GetOpenCLDevices(&count, nullptr);
+        for (size_t i = 0; i < count; i++)
+        {
+            auto name = MagickCore::GetOpenCLDeviceName(devices[i]);
+            RmLogF(rm, LOG_DEBUG, L"Device %d: %s", i, Utils::StringToWString(name).c_str());
+        }
+        const ssize_t chosenDevice{ RmReadInt(rm, L"Device", 0) };
+        if (chosenDevice > -1 && chosenDevice < count)
+        {
+            MagickCore::SetOpenCLDeviceEnabled(devices[chosenDevice], MagickCore::MagickTrue);
+            const auto enabled = MagickCore::GetOpenCLDeviceEnabled(devices[0]);
+            if (enabled == MagickCore::MagickTrue)
+            {
+                RmLogF(rm, LOG_DEBUG, L"Device %d is enabled", chosenDevice);
+            }
+        }
     }
 
     std::string tempFile = std::tmpnam(nullptr);
@@ -52,13 +69,32 @@ PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
 
     std::wstring imgName = L"Image";
     int inpCount = 1;
+
+    const auto begin = clock();
     while (true)
     {
-
-        if (!measure->GetImage(imgName, TRUE))
+        std::wstring image = RmReadString(rm, imgName.c_str(), L"");
+        if (image.size() < 1)
             break;
+
+        std::vector<Config> config = Utils::ParseConfig(image);
+
+        measure->ParseExtend(config, imgName);
+
+        auto imageCon = std::make_shared<ImgContainer>(inpCount - 1, config);
+
+        if (!measure->GetImage(imageCon))
+        {
+            imageCon->img = ONEPIXEL;
+        }
+
+        measure->imgList.push_back(imageCon);
+
         imgName = L"Image" + std::to_wstring(++inpCount);
     }
+    const auto end = clock();
+
+    RmLogF(rm, LOG_DEBUG, L"Render time: %d", end - begin);
 
     measure->Compose();
 }
@@ -70,7 +106,7 @@ PLUGIN_EXPORT double Update(void* data)
 
 PLUGIN_EXPORT LPCWSTR GetString(void* data)
 {
-    const auto measure = static_cast<Measure*>(data);
+    auto measure = static_cast<const Measure*>(data);
 
     return measure->outputW.c_str();
 }
@@ -88,13 +124,24 @@ PLUGIN_EXPORT void ExecuteBang(void* data, LPCWSTR args)
 
         list = list.substr(list.find_first_not_of(L" \t\r\n", 6));
         WSVector imageList = Utils::SeparateList(list, L",", NULL);
-        for (auto &image : imageList)
+        for (auto &imageName : imageList)
         {
-            const int index = Utils::NameToIndex(image);
+            const int index = Utils::NameToIndex(imageName);
             if (index >= 0 && index < measure->imgList.size())
             {
-                measure->imgList[index].img.erase();
-                measure->GetImage(image, FALSE);
+                auto outImg = measure->imgList.at(index);
+
+                std::wstring image = RmReadString(measure->rm, imageName.c_str(), L"");
+                std::vector<Config> config = Utils::ParseConfig(image);
+                measure->ParseExtend(config, imageName);
+
+                outImg->config = config;
+                outImg->img = ONEPIXEL;
+
+                if (!measure->GetImage(outImg))
+                {
+                    outImg->img = ONEPIXEL;
+                }
             }
         }
 
@@ -106,7 +153,6 @@ PLUGIN_EXPORT void Finalize(void* data)
 {
     const auto measure = static_cast<Measure*>(data);
     delete measure;
-
     Measure::refCount--;
     if (Measure::refCount == 0)
     {
@@ -129,142 +175,125 @@ void Measure::LogError(Magick::Exception error) const noexcept
     RmLog(rm, LOG_ERROR, errorW);
 }
 
-void Measure::ParseExtend(WSVector &parentVector, std::wstring parentName, BOOL isRecursion) const
+void Measure::ParseExtend(std::vector<Config> &parentVector, std::wstring parentName, BOOL isRecursion) const
 {
-    for (int k = (int)parentVector.size() - 1; k >= 1 - (int)isRecursion; k--) // Avoid first iteration
+    const size_t lastIndex = isRecursion ? 0 : 1;
+
+    // Avoid first iteration
+    for (size_t k = parentVector.size() - 1; k >= lastIndex; k--)
     {
-        int insertIndex = k + 1;
-        if (_wcsnicmp(parentVector[k].c_str(), L"EXTEND", 6) == 0)
+        size_t insertIndex = k + 1;
+        Config parentOption = parentVector.at(k);
+
+        if (Utils::IsEqual(parentOption.name, L"EXTEND"))
         {
-            auto extendList = Utils::SeparateList(parentVector[k].substr(6), L",", NULL);
-            for (int i = 0; i < extendList.size(); i++)
+            auto extendList = Utils::SeparateList(parentOption.para, L",", 0);
+
+            for (auto &extendName : extendList)
             {
-                if (_wcsicmp(parentName.c_str(), extendList[i].c_str()) == 0) continue; //Avoid Extend itself
+                if (extendName.size() == 0)
+                    continue;
 
-                auto childVector = Utils::SeparateList(
-                    RmReadString(rm, extendList[i].c_str(), L""),
-                    L"|", NULL
-                );
+                // Avoid Extend itself
+                if (Utils::IsEqual(extendName, parentName)) continue;
 
-                ParseExtend(childVector, extendList[i], TRUE);
+                auto childVector = Utils::ParseConfig(
+                    RmReadString(rm, extendName.c_str(), L""));
 
-                for (int j = 0; j < childVector.size(); j++)
+                ParseExtend(childVector, extendName, TRUE);
+
+                for (auto child : childVector)
                 {
-                    parentVector.insert(parentVector.begin() + insertIndex, childVector[j]);
+                    parentVector.insert(parentVector.begin() + insertIndex, child);
                     insertIndex++;
                 }
             }
-            parentVector.erase(parentVector.begin() + k);
+
+            parentVector.at(k).isApplied = TRUE;
         }
     }
 }
 
-BOOL Measure::GetImage(std::wstring imageName, BOOL isPush)
+BOOL Measure::GetImage(std::shared_ptr<ImgContainer> curImg)
 {
-	LPCWSTR rawSetting = RmReadString(rm, imageName.c_str(), L"");
+    Config &baseConfig = curImg->config.at(0);
+    baseConfig.isApplied = TRUE;
 
-	if (wcslen(rawSetting) == 0) return FALSE;
-
-	WSVector config = Utils::SeparateList(rawSetting, L"|", NULL);
-    if (config.empty()) return FALSE;
-
-	ParseExtend(config, imageName);
-
-	ImgContainer curImg = ImgContainer(Utils::NameToIndex(imageName));
-
-    std::wstring typeName;
-    std::wstring typePara;
-	Utils::GetNamePara(config[0], typeName, typePara);
-    config[0].clear();
-
-	const ImgType type = GetType(typeName);
-
-	BOOL isValid = TRUE;
-	if (!typePara.empty())
-	{
-		ParseInternalVariable(typePara, curImg);
-		switch (type)
-		{
-        case CLONE:
-        {
-            const int index = Utils::NameToIndex(typePara);
-
-            if (index < imgList.size() && index >= 0)
-            {
-                curImg.img = imgList[index].img;
-                isValid = TRUE;
-                break;
-            }
-
-            RmLogF(rm, LOG_ERROR, L"%s is invalid Image to clone.", config[0].c_str());
-            isValid = FALSE;
-            break;
-        }
-        case ELLIPSE:
-        case PATH:
-        case POLYGON:
-        case RECTANGLE:
-            isValid = CreateShape(type, typePara.c_str(), config, curImg);
-            break;
-        case COMBINE:
-            isValid = CreateCombine(typePara.c_str(), config, curImg);
-            break;
-        case GRADIENT:
-            isValid = CreateGradient(typePara.c_str(), config, curImg);
-            break;
-		case NORMAL:
-			isValid = CreateFromFile(typePara.c_str(), config, curImg);
-			break;
-		case TEXT:
-            isValid = CreateText(typePara, config, curImg);
-			break;
-        }
+    if (baseConfig.para.empty())
+    {
+        return FALSE;
     }
 
-	if (!isValid || !curImg.img.isValid())
+	const ImgType type = GetType(baseConfig);
+
+	BOOL isValid = TRUE;
+
+	ParseInternalVariable(baseConfig.para, curImg);
+
+	switch (type)
 	{
-        RmLogF(rm, LOG_ERROR, L"%s is invalid. Check its modifiers and effects again.", imageName.c_str());
+    case CLONE:
+    {
+        const int index = Utils::NameToIndex(baseConfig.para);
+
+        if (index < imgList.size() && index >= 0)
+        {
+            curImg->img = imgList.at(index)->img;
+            isValid = TRUE;
+            break;
+        }
+
+        RmLogF(rm, LOG_ERROR, L"%s is invalid Image to clone.", baseConfig.para.c_str());
+        isValid = FALSE;
+        break;
+    }
+    case ELLIPSE:
+    case PATH:
+    case POLYGON:
+    case RECTANGLE:
+        isValid = CreateShape(type, curImg);
+        break;
+    case COMBINE:
+        isValid = CreateCombine(curImg);
+        break;
+    case GRADIENT:
+        isValid = CreateGradient(curImg);
+        break;
+	case NORMAL:
+		isValid = CreateFromFile(curImg);
+		break;
+	case TEXT:
+        isValid = CreateText(curImg);
+		break;
+    }
+
+	if (!isValid || !curImg->img.isValid())
+	{
         return FALSE;
     }
 
 	if (type == COMBINE || type == CLONE)
 	{
-		Magick::Geometry newBound;
 		try
 		{
-			newBound = curImg.img.boundingBox();
-			curImg.X = newBound.xOff();
-			curImg.Y = newBound.yOff();
-			curImg.W = newBound.width();
-			curImg.H = newBound.height();
+            curImg->geometry = curImg->img.boundingBox();
 		}
 		catch (Magick::Exception &error_)
 		{
-			curImg.X = 0;
-			curImg.Y = 0;
-			curImg.W = 0;
-			curImg.H = 0;
+            curImg->geometry = Magick::Geometry{ 0,0,0,0 };
 		}
 	}
 
-    for (auto &option : config)
+    for (auto &option : curImg->config)
 	{
-        if (option.empty())
+        if (option.isApplied)
             continue;
 
-		std::wstring name, parameter;
-		Utils::GetNamePara(option, name, parameter);
+		ParseInternalVariable(option.para, curImg);
 
-		ParseInternalVariable(parameter, curImg);
-
-		if (!ParseEffect(curImg, name, parameter))
+		if (!ParseEffect(*curImg, option))
 			return FALSE;
 	}
-
-    if (isPush)
-        imgList.push_back(curImg);
-    else
-        imgList[curImg.index] = curImg;
 
 	return TRUE;
 }
@@ -277,24 +306,24 @@ void Measure::Compose()
 
     size_t newW = 0;
     size_t newH = 0;
-    for (auto &img : imgList)
+    for (auto img : imgList)
     {
-        if (img.isCombined || img.isIgnored) continue;
+        if (img->isCombined || img->isIgnored) continue;
 
         //Extend main image size
-        if (img.img.columns() > newW)
-            newW = img.img.columns();
+        if (img->img.columns() > newW)
+            newW = img->img.columns();
 
-        if (img.img.rows() > newH)
-            newH = img.img.rows();
+        if (img->img.rows() > newH)
+            newH = img->img.rows();
     }
 
     finalImg.extent(Magick::Geometry(newW, newH));
 
     for (auto &img: imgList)
     {
-        if (img.isCombined || img.isIgnored) continue;
-        finalImg.composite(img.img, 0, 0, MagickCore::OverCompositeOp);
+        if (img->isCombined || img->isIgnored) continue;
+        finalImg.composite(img->img, 0, 0, MagickCore::OverCompositeOp);
     }
 
     if (finalImg.isValid())
@@ -328,14 +357,14 @@ void Measure::Compose()
         RmExecute(skin, finishAction);
     }
 }
-BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstring parameter)
+
+BOOL Measure::ParseEffect(ImgContainer &container, Config &option)
 {
-	LPCWSTR effect = name.c_str();
 	try
 	{
-		if (_wcsicmp(effect, L"MOVE") == 0)
+		if (option.Match(L"MOVE"))
 		{
-			WSVector offsetXY = Utils::SeparateParameter(parameter, 2);
+			WSVector offsetXY = option.ToList(2);
 			const ssize_t x = MathParser::ParseSSizeT(offsetXY[0]);
 			const ssize_t y = MathParser::ParseSSizeT(offsetXY[1]);
 
@@ -348,45 +377,45 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
             tempImg.composite(container.img, x, y, Magick::OverCompositeOp);
             container.img = tempImg;
 
-            container.X += x;
-            container.Y += y;
+            container.geometry.xOff(container.geometry.xOff() + x);
+            container.geometry.yOff(container.geometry.yOff() + y);
 		}
-		else if (_wcsicmp(effect, L"ADAPTIVEBLUR") == 0)
+		else if (option.Match(L"ADAPTIVEBLUR"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2);
+			WSVector valList = option.ToList(2);
 			container.img.adaptiveBlur(
 				MathParser::ParseDouble(valList[0]),
 				MathParser::ParseDouble(valList[1])
 			);
 		}
-		else if (_wcsicmp(effect, L"BLUR") == 0)
+		else if (option.Match(L"BLUR"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2);
+			WSVector valList = option.ToList(2);
 			container.img.blur(
 				MathParser::ParseDouble(valList[0]),
 				MathParser::ParseDouble(valList[1])
 			);
 		}
-		else if (_wcsicmp(effect, L"GAUSSIANBLUR") == 0)
+		else if (option.Match(L"GAUSSIANBLUR"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2);
+			WSVector valList = option.ToList(2);
 			container.img.gaussianBlur(
 				MathParser::ParseDouble(valList[0]),
 				MathParser::ParseDouble(valList[1])
 			);
 		}
-		else if (_wcsicmp(effect, L"MOTIONBLUR") == 0)
+		else if (option.Match(L"MOTIONBLUR"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 3);
+			WSVector valList = option.ToList(3);
 			container.img.motionBlur(
 				MathParser::ParseDouble(valList[0]),
 				MathParser::ParseDouble(valList[1]),
 				MathParser::ParseDouble(valList[2])
 			);
 		}
-		else if (_wcsicmp(effect, L"NOISE") == 0)
+		else if (option.Match(L"NOISE"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2, L"");
+			WSVector valList = option.ToList(2, L"");
 			double density = 1.0;
 			if (valList.size() > 1 && !valList[1].empty())
 				density = MathParser::ParseDouble(valList[1]);
@@ -397,9 +426,9 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 				density
 			);
 		}
-		else if (_wcsicmp(effect, L"SHADOW") == 0)
+		else if (option.Match(L"SHADOW"))
 		{
-			WSVector dropShadow = Utils::SeparateList(parameter, L";", 2, L"");
+			WSVector dropShadow = Utils::SeparateList(option.para, L";", 2, L"");
 			WSVector valList = Utils::SeparateParameter(dropShadow[0], 5);
 
 			double sigma = MathParser::ParseDouble(valList[1]);
@@ -444,10 +473,10 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 				);
 
 		}
-		else if (_wcsicmp(effect, L"INNERSHADOW") == 0)
+		else if (option.Match(L"INNERSHADOW"))
 		{
-			//TODO: Cripsy outline. fix it.
-			WSVector dropShadow = Utils::SeparateList(parameter, L";", 2, L"");
+			//TODO: Crispy outline. fix it.
+			WSVector dropShadow = Utils::SeparateList(option.para, L";", 2, L"");
 			WSVector valList = Utils::SeparateParameter(dropShadow[0], 5);
 			const double sigma = MathParser::ParseDouble(valList[1]);
 			const ssize_t offsetX = MathParser::ParseInt(valList[2]);
@@ -485,16 +514,16 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 			else
 				container.img.composite(shadowOnly, 0, 0, Magick::OverCompositeOp);
 		}
-		else if (_wcsicmp(effect, L"DISTORT") == 0)
+		else if (option.Match(L"DISTORT"))
 		{
-			WSVector valList = Utils::SeparateList(parameter, L";", 3);
-			WSVector rawList = Utils::SeparateParameter(valList[1], NULL);
+			WSVector valList = Utils::SeparateList(option.para, L";", 3);
+			WSVector rawList = Utils::SeparateParameter(valList.at(1), NULL);
 
 			std::vector<double> doubleList;
 			for (auto &oneDouble : rawList)
 				doubleList.push_back(MathParser::ParseDouble(oneDouble));
 
-			const double * doubleArray = &doubleList[0];
+			const double * doubleArray = &*doubleList.begin();
 			container.img.virtualPixelMethod(Magick::TransparentVirtualPixelMethod);
 			container.img.distort(
 				(Magick::DistortMethod)MathParser::ParseInt(valList[0]),
@@ -504,9 +533,9 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 			);
 		}
 		//Same as Distort Perspective but this only requires position of 4 final points
-		else if (_wcsicmp(effect, L"PERSPECTIVE") == 0)
+		else if (option.Match(L"PERSPECTIVE"))
 		{
-			WSVector rawList = Utils::SeparateParameter(parameter, NULL);
+			WSVector rawList = option.ToList(NULL);
 
 			if (rawList.size() < 8)
 			{
@@ -515,23 +544,23 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 			}
 			double doubleArray[16];
 			//Top Left
-			doubleArray[0]  = (double)container.X;
-			doubleArray[1]  = (double)container.Y;
+			doubleArray[0]  = (double)container.geometry.xOff();
+			doubleArray[1]  = (double)container.geometry.yOff();
 			doubleArray[2]  = Utils::ParseNumber2(rawList[0].c_str(), doubleArray[0], MathParser::ParseDouble);
 			doubleArray[3]  = Utils::ParseNumber2(rawList[1].c_str(), doubleArray[1], MathParser::ParseDouble);
 			//Top Right
-			doubleArray[4]  = (double)(container.X + container.W);
-			doubleArray[5]  = (double)container.Y;
+			doubleArray[4]  = (double)(container.geometry.xOff() + container.geometry.width());
+			doubleArray[5]  = (double)container.geometry.yOff();
 			doubleArray[6]  = Utils::ParseNumber2(rawList[2].c_str(), doubleArray[4], MathParser::ParseDouble);
 			doubleArray[7]  = Utils::ParseNumber2(rawList[3].c_str(), doubleArray[5], MathParser::ParseDouble);
 			//Bottom Right
-			doubleArray[8]  = (double)(container.X + container.W);
-			doubleArray[9]  = (double)(container.Y + container.H);
+			doubleArray[8]  = (double)(container.geometry.xOff() + container.geometry.width());
+			doubleArray[9]  = (double)(container.geometry.yOff() + container.geometry.height());
 			doubleArray[10] = Utils::ParseNumber2(rawList[4].c_str(), doubleArray[8], MathParser::ParseDouble);
 			doubleArray[11] = Utils::ParseNumber2(rawList[5].c_str(), doubleArray[9], MathParser::ParseDouble);
 			//Bottom Left
-			doubleArray[12] = (double)container.X;
-			doubleArray[13] = (double)(container.Y + container.H);
+			doubleArray[12] = (double)container.geometry.xOff();
+			doubleArray[13] = (double)(container.geometry.yOff() + container.geometry.height());
 			doubleArray[14] = Utils::ParseNumber2(rawList[6].c_str(), doubleArray[12], MathParser::ParseDouble);
 			doubleArray[15] = Utils::ParseNumber2(rawList[7].c_str(), doubleArray[13], MathParser::ParseDouble);
 
@@ -543,18 +572,23 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 				true
 			);
 		}
-		else if (_wcsicmp(effect, L"OPACITY") == 0)
+		else if (option.Match(L"OPACITY"))
 		{
-			double a = MathParser::ParseDouble(parameter);
+			double a = option.ToDouble();
 			if (a > 100) a = 100;
 			if (a < 0) a = 0;
 			a /= 100;
 
-			container.img.alpha((unsigned int)(a * QuantumRange));
+            auto temp = Magick::Image(
+                Magick::Geometry(container.img.columns(), container.img.rows()),
+                Magick::ColorRGB(1, 1, 1, a)
+            );
+
+            container.img.composite(temp, 0, 0, Magick::DstInCompositeOp);
 		}
-		else if (_wcsicmp(effect, L"SHADE") == 0)
+		else if (option.Match(L"SHADE"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 3);
+			WSVector valList = option.ToList(3);
 
 			container.img.shade(
 				MathParser::ParseInt(valList[0]),
@@ -562,110 +596,81 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 				MathParser::ParseInt(valList[2]) == 1
 			);
 		}
-		else if (_wcsicmp(effect, L"CHANNEL") == 0)
+		else if (option.Match(L"CHANNEL"))
 		{
-            LPCWSTR channelColor = parameter.c_str();
-			if (_wcsicmp(channelColor, L"RED") == 0)
+			if (option.Equal(L"RED"))
 			{
 				container.img = container.img.separate(Magick::RedChannel);
 			}
-			else if (_wcsicmp(channelColor, L"GREEN") == 0)
+			else if (option.Equal(L"GREEN"))
 			{
 				container.img = container.img.separate(Magick::GreenChannel);
 			}
-			else if (_wcsicmp(channelColor, L"BLUE") == 0)
+			else if (option.Equal(L"BLUE"))
 			{
 				container.img = container.img.separate(Magick::BlueChannel);
 			}
-			else if (_wcsicmp(channelColor, L"BLACK") == 0)
+			else if (option.Equal(L"BLACK"))
 			{
 				container.img = container.img.separate(Magick::BlackChannel);
 			}
-			else if (_wcsicmp(channelColor, L"OPACITY") == 0)
+			else if (option.Equal(L"OPACITY"))
 			{
 				container.img = container.img.separate(Magick::OpacityChannel);
 			}
 		}
-		else if (_wcsicmp(effect, L"MODULATE") == 0)
+		else if (option.Match(L"MODULATE"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 3, L"100");
+			WSVector valList = option.ToList(3, L"100");
 			container.img.modulate(
 				MathParser::ParseInt(valList[0]),
 				MathParser::ParseInt(valList[1]),
 				MathParser::ParseInt(valList[2])
 			);
 		}
-		else if (_wcsicmp(effect, L"OILPAINT") == 0)
+		else if (option.Match(L"OILPAINT"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2);
+			WSVector valList = option.ToList(2);
 			container.img.oilPaint(
 				MathParser::ParseInt(valList[0]),
 				MathParser::ParseInt(valList[1])
 			);
 		}
-		else if (_wcsicmp(effect, L"SHEAR") == 0)
+		else if (option.Match(L"SHEAR"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2);
+			WSVector valList = option.ToList(2);
 			container.img.shear(
 				MathParser::ParseInt(valList[0]),
 				MathParser::ParseInt(valList[1])
 			);
 		}
-		else if (_wcsicmp(effect, L"RESIZE") == 0)
+		else if (option.Match(L"RESIZE"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 3);
-			Magick::Geometry newSize(
-				MathParser::ParseInt(valList[0]),
-				MathParser::ParseInt(valList[1])
-			);
-
-			switch (MathParser::ParseInt(valList[2]))
-			{
-			case 1:
-				newSize.aspect(true);
-				break;
-			case 2:
-				newSize.fillArea(true);
-				break;
-			case 3:
-				newSize.greater(true);
-				break;
-			case 4:
-				newSize.less(true);
-				break;
-			}
+			WSVector valList = option.ToList(3);
+            Magick::Geometry newSize(
+                MathParser::ParseInt(valList.at(0)),
+                MathParser::ParseInt(valList.at(1))
+            );
+            if (valList.size() > 2)
+                Utils::SetGeometryMode(MathParser::ParseInt(valList.at(2)), newSize);
 
 			container.img.resize(newSize);
 		}
-		else if (_wcsicmp(effect, L"ADAPTIVERESIZE") == 0)
+		else if (option.Match(L"ADAPTIVERESIZE"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 3);
+			WSVector valList = option.ToList(3);
 			Magick::Geometry newSize(
-				MathParser::ParseInt(valList[0]),
-				MathParser::ParseInt(valList[1])
+				MathParser::ParseInt(valList.at(0)),
+				MathParser::ParseInt(valList.at(1))
 			);
-
-			switch (MathParser::ParseInt(valList[2]))
-			{
-			case 1:
-				newSize.aspect(true);
-				break;
-			case 2:
-				newSize.fillArea(true);
-				break;
-			case 3:
-				newSize.greater(true);
-				break;
-			case 4:
-				newSize.less(true);
-				break;
-			}
+            if (valList.size() > 2)
+                Utils::SetGeometryMode(MathParser::ParseInt(valList.at(2)), newSize);
 
 			container.img.adaptiveResize(newSize);
 		}
-		else if (_wcsicmp(effect, L"SCALE") == 0)
+		else if (option.Match(L"SCALE"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2);
+			WSVector valList = option.ToList(2);
 			Magick::Geometry newSize;
 			const size_t percentPos = valList[0].find(L"%");
 			if (percentPos != std::wstring::npos) // One parameter with percentage value
@@ -686,39 +691,25 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 
 			container.img.scale(newSize);
 		}
-		else if (_wcsicmp(effect, L"SAMPLE") == 0)
+		else if (option.Match(L"SAMPLE"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2);
-			Magick::Geometry newSize(
-				MathParser::ParseInt(valList[0]),
-				MathParser::ParseInt(valList[1])
-			);
-
-			switch (MathParser::ParseInt(valList[2]))
-			{
-			case 1:
-				newSize.aspect(true);
-				break;
-			case 2:
-				newSize.fillArea(true);
-				break;
-			case 3:
-				newSize.greater(true);
-				break;
-			case 4:
-				newSize.less(true);
-				break;
-			}
+			WSVector valList = option.ToList(2);
+            Magick::Geometry newSize(
+                MathParser::ParseInt(valList.at(0)),
+                MathParser::ParseInt(valList.at(1))
+            );
+            if (valList.size() > 2)
+                Utils::SetGeometryMode(MathParser::ParseInt(valList.at(2)), newSize);
 
 			container.img.sample(newSize);
 		}
-		else if (_wcsicmp(effect, L"RESAMPLE") == 0)
+		else if (option.Match(L"RESAMPLE"))
 		{
-			container.img.resample(MathParser::ParseDouble(parameter));
+			container.img.resample(option.ToDouble());
 		}
-		else if (_wcsicmp(effect, L"CROP") == 0)
+		else if (option.Match(L"CROP"))
 		{
-			WSVector geometryRaw = Utils::SeparateParameter(parameter, 5);
+			WSVector geometryRaw = option.ToList(5);
 			ssize_t x = MathParser::ParseSSizeT(geometryRaw[0]);
             ssize_t y = MathParser::ParseSSizeT(geometryRaw[1]);
             size_t w = MathParser::ParseSizeT(geometryRaw[2]);
@@ -775,29 +766,50 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 				h = container.img.rows() - y;
 
 			container.img.crop(Magick::Geometry(w, h, x, y));
-            container.img.page(Magick::Geometry(0, 0, 0, 0)); // Move cropped image to top left of canvas
+            // Move cropped image to top left of canvas
+            container.img.page(Magick::Geometry(0, 0, 0, 0));
         }
-		else if (_wcsicmp(effect, L"ROTATIONALBLUR") == 0)
+		else if (option.Match(L"ROTATIONALBLUR"))
 		{
-			container.img.rotationalBlur(MathParser::ParseDouble(parameter));
+			container.img.rotationalBlur(option.ToDouble());
 		}
-		else if (_wcsicmp(effect, L"COLORIZE") == 0)
+		else if (option.Match(L"COLORIZE"))
 		{
-			WSVector valList = Utils::SeparateList(parameter, L";", 2);
+			WSVector valList = Utils::SeparateList(option.para, L";", 2);
 			container.img.colorize(
 				(unsigned int)MathParser::ParseInt(valList[0]),
 				Utils::ParseColor(valList[1])
 			);
 		}
-		else if (_wcsicmp(effect, L"GRAYSCALE") == 0)
+        else if (option.Match(L"CHARCOAL"))
+        {
+            WSVector valList = option.ToList(0);
+            const auto vSize = valList.size();
+            if (vSize == 0)
+            {
+                container.img.charcoal();
+            }
+            else if (vSize == 1)
+            {
+                container.img.charcoal(MathParser::ParseDouble(valList.at(0)));
+            }
+            else
+            {
+                container.img.charcoal(
+                    MathParser::ParseDouble(valList.at(0)),
+                    MathParser::ParseDouble(valList.at(1))
+                );
+            }
+        }
+		else if (option.Match(L"GRAYSCALE"))
 		{
-			const int method = MathParser::ParseInt(parameter);
+			const int method = MathParser::ParseInt(option.para);
 			if (method > 0 && method <= 9)
 				container.img.grayscale((Magick::PixelIntensityMethod)method);
 		}
-		else if (_wcsicmp(effect, L"ROLL") == 0)
+		else if (option.Match(L"ROLL"))
 		{
-			WSVector valList = Utils::SeparateParameter(parameter, 2, L"0");
+			WSVector valList = option.ToList(2, L"0");
 			size_t c = MathParser::ParseSizeT(valList[0]);
             size_t r = MathParser::ParseSizeT(valList[1]);
 			if (c < 0)
@@ -807,70 +819,70 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 
 			container.img.roll(c, r);
 		}
-		else if (_wcsicmp(effect, L"NEGATE") == 0)
+		else if (option.Match(L"NEGATE"))
 		{
-			container.img.negate(MathParser::ParseBool(parameter));
+			container.img.negate(MathParser::ParseBool(option.para));
 		}
-		else if (_wcsicmp(effect, L"IMPLODE") == 0)
+		else if (option.Match(L"IMPLODE"))
 		{
-			container.img.implode(MathParser::ParseDouble(parameter));
+			container.img.implode(option.ToDouble());
 		}
-		else if (_wcsicmp(effect, L"SPREAD") == 0)
+		else if (option.Match(L"SPREAD"))
 		{
 			container.img.virtualPixelMethod(Magick::BackgroundVirtualPixelMethod);
-			container.img.spread(MathParser::ParseDouble(parameter));
+			container.img.spread(option.ToDouble());
 		}
-		else if (_wcsicmp(effect, L"SWIRL") == 0)
+		else if (option.Match(L"SWIRL"))
 		{
-			container.img.swirl(MathParser::ParseDouble(parameter));
+			container.img.swirl(option.ToDouble());
 		}
-		else if (_wcsicmp(effect, L"MEDIANFILTER") == 0)
+		else if (option.Match(L"MEDIANFILTER"))
 		{
-			container.img.medianFilter(MathParser::ParseDouble(parameter));
+			container.img.medianFilter(option.ToDouble());
 		}
-		else if (_wcsicmp(effect, L"EQUALIZE") == 0)
+		else if (option.Match(L"EQUALIZE"))
 		{
 			container.img.equalize();
 		}
-		else if (_wcsicmp(effect, L"ENHANCE") == 0)
+		else if (option.Match(L"ENHANCE"))
 		{
 			container.img.enhance();
 		}
-		else if (_wcsicmp(effect, L"DESPECKLE") == 0)
+		else if (option.Match(L"DESPECKLE"))
 		{
 			container.img.despeckle();
 		}
-		else if (_wcsicmp(effect, L"REDUCENOISE") == 0)
+		else if (option.Match(L"REDUCENOISE"))
 		{
 			container.img.reduceNoise();
 		}
-		else if (_wcsicmp(effect, L"TRANSPOSE") == 0)
+		else if (option.Match(L"TRANSPOSE"))
 		{
 			container.img.transpose();
 		}
-		else if (_wcsicmp(effect, L"TRANSVERSE") == 0)
+		else if (option.Match(L"TRANSVERSE"))
 		{
 			container.img.transverse();
 		}
-		else if (_wcsicmp(effect, L"FLIP") == 0)
+		else if (option.Match(L"FLIP"))
 		{
 			container.img.flip();
 		}
-		else if (_wcsicmp(effect, L"FLOP") == 0)
+		else if (option.Match(L"FLOP"))
 		{
 			container.img.flop();
 		}
-		else if (_wcsicmp(effect, L"MAGNIFY") == 0)
+		else if (option.Match(L"MAGNIFY"))
 		{
 			container.img.magnify();
 		}
-		else if (_wcsicmp(effect, L"MINIFY") == 0)
+		else if (option.Match(L"MINIFY"))
 		{
 			container.img.minify();
 		}
-		else if (_wcsicmp(effect, L"IGNORE") == 0)
+		else if (option.Match(L"IGNORE"))
 		{
-			container.isIgnored = MathParser::ParseBool(parameter);
+			container.isIgnored = MathParser::ParseBool(option.para);
 		}
 
 		return TRUE;
@@ -882,43 +894,43 @@ BOOL Measure::ParseEffect(ImgContainer &container, std::wstring name, std::wstri
 	}
 }
 
-void Measure::ParseInternalVariable(std::wstring &outSetting, ImgContainer &srcImg)
+void Measure::ParseInternalVariable(std::wstring &rawSetting, std::shared_ptr<ImgContainer> srcImg)
 {
-	size_t start = outSetting.find(L"{");
+	size_t start = rawSetting.find(L"{");
 	while (start != std::wstring::npos)
 	{
-        const size_t end = outSetting.find(L"}", start + 1);
+        const size_t end = rawSetting.find(L"}", start + 1);
 		if (end != std::wstring::npos)
 		{
-			std::wstring f = outSetting.substr(start + 1, end - start - 1);
+			std::wstring f = rawSetting.substr(start + 1, end - start - 1);
 
 			WSVector v = Utils::SeparateList(f, L":", 2, L"");
-            const int index = Utils::NameToIndex(v[0]);
-			if (index != -1 && index <= srcImg.index)
+            const int index = Utils::NameToIndex(v.at(0));
+			if (index != -1 && index <= srcImg->index)
 			{
-				ImgContainer* tempStruct = nullptr;
-				if (index == srcImg.index)
-					tempStruct = &srcImg;
+				std::shared_ptr<ImgContainer> tempStruct = nullptr;
+				if (index == srcImg->index)
+					tempStruct = srcImg;
 				else
-					tempStruct = &imgList.at(index);
+					tempStruct = imgList.at(index);
 
-				LPCWSTR para = v[1].c_str();
+				LPCWSTR para = v.at(1).c_str();
 				std::wstring c = L"";
 				if (_wcsnicmp(para, L"X", 1) == 0)
 				{
-					c = std::to_wstring(tempStruct->X);
+					c = std::to_wstring(tempStruct->geometry.xOff());
 				}
 				else if (_wcsnicmp(para, L"Y", 1) == 0)
 				{
-					c = std::to_wstring(tempStruct->Y);
+					c = std::to_wstring(tempStruct->geometry.yOff());
 				}
 				else if (_wcsnicmp(para, L"W", 1) == 0)
 				{
-					c = std::to_wstring(tempStruct->W);
+					c = std::to_wstring(tempStruct->geometry.width());
 				}
 				else if (_wcsnicmp(para, L"H", 1) == 0)
 				{
-					c = std::to_wstring(tempStruct->H);
+					c = std::to_wstring(tempStruct->geometry.height());
 				}
 
                 if (_wcsnicmp(para, L"COLOR", 5) == 0 &&
@@ -951,23 +963,23 @@ void Measure::ParseInternalVariable(std::wstring &outSetting, ImgContainer &srcI
 
 				if (!c.empty())
 				{
-					outSetting.replace(
-						outSetting.begin() + start,
-						outSetting.begin() + end + 1,
+					rawSetting.replace(
+						rawSetting.begin() + start,
+						rawSetting.begin() + end + 1,
 						c
 					);
-					start = outSetting.find(L"{");
+					start = rawSetting.find(L"{");
 				}
 				else
 				{
-					start = outSetting.find(L"{", end + 1);
+					start = rawSetting.find(L"{", end + 1);
 				}
 
 				continue;
 			}
 			else
 			{
-				start = outSetting.find(L"{", end + 1);
+				start = rawSetting.find(L"{", end + 1);
 				continue;
 			}
 		}
@@ -977,6 +989,7 @@ void Measure::ParseInternalVariable(std::wstring &outSetting, ImgContainer &srcI
         }
 	}
 }
+
 void GenColor(Magick::Image img, size_t totalColor, std::vector<Magick::Color> &outContainer)
 {
 	Magick::Geometry smallSize(25, 25);

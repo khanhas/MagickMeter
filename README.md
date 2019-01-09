@@ -43,7 +43,7 @@ Image3 = File http://www.clker.com/cliparts/f/a/5/P/4/A/dark-green-marijuana-lea
 True power of ImageMagick library is image manipulation. To use available effects and modifiers, you can add them right after its declaration:
 ```ini
 Image = File D:\homer.svg | Scale 200% | Implode -1
-Image2 = File Text EXAMPLE FOR GitHub | Size 120 | Shadow 80,10,20,0 ; FF5050
+Image2 = Text EXAMPLE FOR GitHub | Size 120 | Shadow 80,10,20,0 ; FF5050
 Image3 = File E:\Weed420Meme.jpg | AdaptiveBlur 0,20
 ```
 
@@ -76,84 +76,21 @@ Check out [Wiki](https://github.com/khanhas/MagickMeter/wiki) for more options a
 
 ## Development
 ### Requirement: 
-- [ImageMagick](https://www.imagemagick.org/script/download.php)
+1. [ImageMagick](https://www.imagemagick.org/script/download.php)
 and option **Install development header and libraries for C and C++** needs to be checked while installing
 
+2. Clone repo:
 ```bash
 git clone https://github.com/khanhas/MagickMeter
 ```
 
-If you have Visual Studio and are comfortable to use it:
-- Open `magickmeter.vcxproj` and everything is all set
-- You might want to change ImageMagick and its library paths in project setting if you install ImageMagick somewhere else not `C:\Program Files\`.
-
-For anyone does not want to use Visual Studio, I already setup bunch of scripts to support configuring, build and distributing automatically.
-But some requirements need to be met:
-- **gyp**: Project generate tool from Google
-```bash
-cd MagickMeter
-git clone https://chromium.googlesource.com/external/gyp --depth=1
-```
-- **psm**: execute powershell scripts with shorthand alias. Download installer [here](https://github.com/khanhas/psm/releases/download/1.0/psm-1.0.0-win-installer.exe)
--  **Build Tools for Visual Studio 2017** from Microsoft: https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2017
-
-- In `./task.ps1` script, set `$msbuild` equals path MSBuild.exe in Build Tools folder you just installed.
-- In `./magickmeter.gyp`, set ImageMagick installed path to variable `im_64_path` (and `im_86_path` if you wish to build x86 version)
-
-### Generate project file:
-```bash
-psm configure
-```
-When you add more files to `./src`, remember to execute `configure` to add them to project!
-
-### Build
-```bash
-psm build
-```
-
-or 
-
-```bash
-psm build86
-```
-
-or build both of them
-
-```bash
-psm buildAll
-```
-
-### Copy to Rainmeter
-To test its functionality with skins.  
-
-Rainmeter needs to be closed:
-```bash
-psm killrm
-```
-
-Then 
-```bash
-psm copy
-```
-or 
-```bash
-psm copy86
-```
+3. Open `magickmeter.vcxproj` and everything is all set
+**Note:** You might want to change ImageMagick and its library paths in project setting if you install ImageMagick somewhere else not `C:\Program Files\`.
 
 ### Distribute
-Bump version
-```bash
-psm bump 0 6 2
+Open Powershell
 ```
-
-Do a fresh build for both arch
-```bash
-psm fresh
+. .\task.ps1
+Dist 1 2 3
 ```
-
-Export zip file
-```bash
-psm dist
-```
-
-Then share with the world!
+with `1 2 3` is semantic version number `Major Minor Patch`

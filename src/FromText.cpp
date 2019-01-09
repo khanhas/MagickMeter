@@ -45,7 +45,7 @@ BOOL Measure::CreateText(std::shared_ptr<ImgContainer> out)
         if (option.isApplied)
             continue;
 
-		ParseInternalVariable(option.para, out);
+		ReplaceInternalVariable(option.para, out);
 
         option.isApplied = TRUE;
 

@@ -90,9 +90,9 @@ public:
 	BOOL CreateGradient(std::shared_ptr<ImgContainer> out);
     BOOL CreateConicalGradient(std::shared_ptr<ImgContainer> out);
 
-	BOOL ParseEffect(ImgContainer &img, Config &option);
-	void ParseInternalVariable(std::wstring &rawSetting, std::shared_ptr<ImgContainer> srcImg);
-	void ParseExtend(
+	BOOL ApplyEffect(std::shared_ptr<ImgContainer> img, Config &option);
+	void ReplaceInternalVariable(std::wstring &rawSetting, std::shared_ptr<ImgContainer> srcImg);
+	void InsertExtend(
 		std::vector<Config> &parentVector,
 		std::wstring parentName,
 		BOOL isRecursion = FALSE) const;

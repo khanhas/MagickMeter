@@ -261,7 +261,7 @@ BOOL Measure::CreateShape(ImgType shapeType, std::shared_ptr<ImgContainer> out)
 
         for (auto &path : pathList)
         {
-            ParseInternalVariable(path.para, out);
+            ReplaceInternalVariable(path.para, out);
 
             auto segmentList = path.ToList();
             const size_t segmentSize = segmentList.size();
@@ -452,7 +452,7 @@ BOOL Measure::CreateShape(ImgType shapeType, std::shared_ptr<ImgContainer> out)
         if (option.isApplied)
             continue;
 
-		ParseInternalVariable(option.para, out);
+		ReplaceInternalVariable(option.para, out);
         option.isApplied = TRUE;
 
 		if (option.Match(L"CANVAS"))

@@ -35,7 +35,7 @@ BOOL Measure::CreateGradient(std::shared_ptr<ImgContainer> out)
         if (option.isApplied)
             continue;
 
-		ParseInternalVariable(option.para, out);
+		ReplaceInternalVariable(option.para, out);
 
 		if (option.Match(L"CANVAS"))
 		{

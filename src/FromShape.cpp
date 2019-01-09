@@ -236,11 +236,12 @@ BOOL Measure::CreateShape(ImgType shapeType, std::shared_ptr<ImgContainer> out)
 
         auto pathList = Utils::ParseConfig(pathString);
 
-        WSVector startPoint = Utils::SeparateParameter(pathList.at(0).name, 0);
+        std::wstring firstOption = pathList.at(0).name + pathList.at(0).para;
+        WSVector startPoint = Utils::SeparateParameter(firstOption, 0);
 
         if (startPoint.size() < 2)
         {
-            RmLogF(rm, LOG_ERROR, L"%s is invalid start point.", pathList.at(0).name.c_str());
+            RmLogF(rm, LOG_ERROR, L"%s is invalid start point.", firstOption.c_str());
             return FALSE;
         }
 
@@ -721,7 +722,11 @@ std::unique_ptr<Shape> CreateEllipse(WSVector &inParaList)
     if (pSize > 5) end = MathParser::ParseDouble(inParaList.at(5));
 
     return std::make_unique<Shape>(
-        Magick::DrawableEllipse(x, y, radiusX, radiusY, start, end),
+        Magick::DrawableRoundRectangle(
+            x - radiusX, y - radiusY,
+            x + radiusX - 1, y + radiusY - 1,
+            radiusX, radiusY
+        ),
         Magick::DrawableList{ Magick::DrawableFillColor(Magick::Color("white")) },
         Magick::Geometry{
             static_cast<size_t>(radiusX * 2.0),
@@ -729,8 +734,8 @@ std::unique_ptr<Shape> CreateEllipse(WSVector &inParaList)
             static_cast<ssize_t>(x - abs(radiusX)),
             static_cast<ssize_t>(y - abs(radiusY))
         },
-        x + abs(radiusX) + 1,
-        y + abs(radiusY) + 1
+        x + abs(radiusX),
+        y + abs(radiusY)
     );
 }
 

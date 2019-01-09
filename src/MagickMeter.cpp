@@ -79,7 +79,7 @@ PLUGIN_EXPORT void Reload(void * data, void * rm, double * maxValue)
 
         std::vector<Config> config = Utils::ParseConfig(image);
 
-        measure->ParseExtend(config, imgName);
+        measure->InsertExtend(config, imgName);
 
         auto imageCon = std::make_shared<ImgContainer>(inpCount - 1, config);
 
@@ -133,7 +133,7 @@ PLUGIN_EXPORT void ExecuteBang(void* data, LPCWSTR args)
 
                 std::wstring image = RmReadString(measure->rm, imageName.c_str(), L"");
                 std::vector<Config> config = Utils::ParseConfig(image);
-                measure->ParseExtend(config, imageName);
+                measure->InsertExtend(config, imageName);
 
                 outImg->config = config;
                 outImg->img = ONEPIXEL;
@@ -175,7 +175,7 @@ void Measure::LogError(Magick::Exception error) const noexcept
     RmLog(rm, LOG_ERROR, errorW);
 }
 
-void Measure::ParseExtend(std::vector<Config> &parentVector, std::wstring parentName, BOOL isRecursion) const
+void Measure::InsertExtend(std::vector<Config> &parentVector, std::wstring parentName, BOOL isRecursion) const
 {
     const size_t lastIndex = isRecursion ? 0 : 1;
 
@@ -185,9 +185,9 @@ void Measure::ParseExtend(std::vector<Config> &parentVector, std::wstring parent
         size_t insertIndex = k + 1;
         Config parentOption = parentVector.at(k);
 
-        if (Utils::IsEqual(parentOption.name, L"EXTEND"))
+        if (parentOption.Match(L"EXTEND"))
         {
-            auto extendList = Utils::SeparateList(parentOption.para, L",", 0);
+            auto extendList = parentOption.ToList();
 
             for (auto &extendName : extendList)
             {
@@ -200,7 +200,7 @@ void Measure::ParseExtend(std::vector<Config> &parentVector, std::wstring parent
                 auto childVector = Utils::ParseConfig(
                     RmReadString(rm, extendName.c_str(), L""));
 
-                ParseExtend(childVector, extendName, TRUE);
+                InsertExtend(childVector, extendName, TRUE);
 
                 for (auto child : childVector)
                 {
@@ -228,7 +228,7 @@ BOOL Measure::GetImage(std::shared_ptr<ImgContainer> curImg)
 
 	BOOL isValid = TRUE;
 
-	ParseInternalVariable(baseConfig.para, curImg);
+	ReplaceInternalVariable(baseConfig.para, curImg);
 
 	switch (type)
 	{
@@ -289,9 +289,9 @@ BOOL Measure::GetImage(std::shared_ptr<ImgContainer> curImg)
         if (option.isApplied)
             continue;
 
-		ParseInternalVariable(option.para, curImg);
+		ReplaceInternalVariable(option.para, curImg);
 
-		if (!ParseEffect(*curImg, option))
+		if (!ApplyEffect(curImg, option))
 			return FALSE;
 	}
 
@@ -358,543 +358,7 @@ void Measure::Compose()
     }
 }
 
-BOOL Measure::ParseEffect(ImgContainer &container, Config &option)
-{
-	try
-	{
-		if (option.Match(L"MOVE"))
-		{
-			WSVector offsetXY = option.ToList(2);
-			const ssize_t x = MathParser::ParseSSizeT(offsetXY[0]);
-			const ssize_t y = MathParser::ParseSSizeT(offsetXY[1]);
-
-            auto newSize = Magick::Geometry(
-                container.img.columns() + x,
-                container.img.rows() + y);
-
-            auto tempImg = Magick::Image(newSize, INVISIBLE);
-
-            tempImg.composite(container.img, x, y, Magick::OverCompositeOp);
-            container.img = tempImg;
-
-            container.geometry.xOff(container.geometry.xOff() + x);
-            container.geometry.yOff(container.geometry.yOff() + y);
-		}
-		else if (option.Match(L"ADAPTIVEBLUR"))
-		{
-			WSVector valList = option.ToList(2);
-			container.img.adaptiveBlur(
-				MathParser::ParseDouble(valList[0]),
-				MathParser::ParseDouble(valList[1])
-			);
-		}
-		else if (option.Match(L"BLUR"))
-		{
-			WSVector valList = option.ToList(2);
-			container.img.blur(
-				MathParser::ParseDouble(valList[0]),
-				MathParser::ParseDouble(valList[1])
-			);
-		}
-		else if (option.Match(L"GAUSSIANBLUR"))
-		{
-			WSVector valList = option.ToList(2);
-			container.img.gaussianBlur(
-				MathParser::ParseDouble(valList[0]),
-				MathParser::ParseDouble(valList[1])
-			);
-		}
-		else if (option.Match(L"MOTIONBLUR"))
-		{
-			WSVector valList = option.ToList(3);
-			container.img.motionBlur(
-				MathParser::ParseDouble(valList[0]),
-				MathParser::ParseDouble(valList[1]),
-				MathParser::ParseDouble(valList[2])
-			);
-		}
-		else if (option.Match(L"NOISE"))
-		{
-			WSVector valList = option.ToList(2, L"");
-			double density = 1.0;
-			if (valList.size() > 1 && !valList[1].empty())
-				density = MathParser::ParseDouble(valList[1]);
-
-
-			container.img.addNoise(
-				(Magick::NoiseType)MathParser::ParseInt(valList[0]),
-				density
-			);
-		}
-		else if (option.Match(L"SHADOW"))
-		{
-			WSVector dropShadow = Utils::SeparateList(option.para, L";", 2, L"");
-			WSVector valList = Utils::SeparateParameter(dropShadow[0], 5);
-
-			double sigma = MathParser::ParseDouble(valList[1]);
-			const ssize_t offsetX = MathParser::ParseInt(valList[2]);
-            const ssize_t offsetY = MathParser::ParseInt(valList[3]);
-
-			Magick::Image tempShadow = container.img;
-
-			if (!dropShadow[1].empty())
-				tempShadow.backgroundColor(Utils::ParseColor(dropShadow[1]));
-			else
-				tempShadow.backgroundColor(Magick::Color("black"));
-
-			if (sigma < 0) sigma = -sigma;
-			tempShadow.shadow(
-				MathParser::ParseDouble(valList[0]),
-				sigma,
-				0, 0
-			);
-
-			container.img.extent(Magick::Geometry(
-				tempShadow.columns() + offsetX + (size_t)sigma,
-				tempShadow.rows() + offsetY + (size_t)sigma
-			), INVISIBLE);
-
-			if (MathParser::ParseInt(valList[4]) == 1)
-			{
-				container.img.erase();
-				container.img.composite(
-					tempShadow,
-                    offsetX - (ssize_t)(sigma * 2),
-                    offsetY - (ssize_t)(sigma * 2),
-					MagickCore::OverCompositeOp
-				);
-			}
-			else
-				container.img.composite(
-					tempShadow,
-					(ssize_t)(offsetX - sigma * 2),
-					(ssize_t)(offsetY - sigma * 2),
-					MagickCore::DstOverCompositeOp
-				);
-
-		}
-		else if (option.Match(L"INNERSHADOW"))
-		{
-			//TODO: Crispy outline. fix it.
-			WSVector dropShadow = Utils::SeparateList(option.para, L";", 2, L"");
-			WSVector valList = Utils::SeparateParameter(dropShadow[0], 5);
-			const double sigma = MathParser::ParseDouble(valList[1]);
-			const ssize_t offsetX = MathParser::ParseInt(valList[2]);
-			const ssize_t offsetY = MathParser::ParseInt(valList[3]);
-			Magick::Image temp(Magick::Geometry(
-				container.img.columns() + offsetX + (size_t)(sigma * 4),
-				container.img.rows() + offsetY + (size_t)(sigma * 4)
-			), Magick::Color("black"));
-			temp.alpha(true);
-			temp.composite(
-				container.img,
-				(size_t)sigma * 2,
-				(size_t)sigma * 2,
-				Magick::DstOutCompositeOp
-			);
-			temp.backgroundColor(Utils::ParseColor(dropShadow[1]));
-			temp.shadow(
-				MathParser::ParseDouble(valList[0]),
-				sigma,
-				0, 0
-			);
-
-			Magick::Image shadowOnly = container.img;
-			shadowOnly.alpha(true);
-
-			shadowOnly.composite(
-				temp,
-                offsetX - (ssize_t)(sigma * 4),
-                offsetY - (ssize_t)(sigma * 4),
-				Magick::SrcInCompositeOp
-			);
-
-			if (MathParser::ParseInt(valList[4]) == 1)
-				container.img = shadowOnly;
-			else
-				container.img.composite(shadowOnly, 0, 0, Magick::OverCompositeOp);
-		}
-		else if (option.Match(L"DISTORT"))
-		{
-			WSVector valList = Utils::SeparateList(option.para, L";", 3);
-			WSVector rawList = Utils::SeparateParameter(valList.at(1), NULL);
-
-			std::vector<double> doubleList;
-			for (auto &oneDouble : rawList)
-				doubleList.push_back(MathParser::ParseDouble(oneDouble));
-
-			const double * doubleArray = &*doubleList.begin();
-			container.img.virtualPixelMethod(Magick::TransparentVirtualPixelMethod);
-			container.img.distort(
-				(Magick::DistortMethod)MathParser::ParseInt(valList[0]),
-				doubleList.size(),
-				doubleArray,
-				MathParser::ParseBool(valList[2])
-			);
-		}
-		//Same as Distort Perspective but this only requires position of 4 final points
-		else if (option.Match(L"PERSPECTIVE"))
-		{
-			WSVector rawList = option.ToList(NULL);
-
-			if (rawList.size() < 8)
-			{
-				RmLog(rm, LOG_WARNING, L"Perspective: Not enough control point. Requires 4 pairs of X and Y.");
-				return TRUE;
-			}
-			double doubleArray[16];
-			//Top Left
-			doubleArray[0]  = (double)container.geometry.xOff();
-			doubleArray[1]  = (double)container.geometry.yOff();
-			doubleArray[2]  = Utils::ParseNumber2(rawList[0].c_str(), doubleArray[0], MathParser::ParseDouble);
-			doubleArray[3]  = Utils::ParseNumber2(rawList[1].c_str(), doubleArray[1], MathParser::ParseDouble);
-			//Top Right
-			doubleArray[4]  = (double)(container.geometry.xOff() + container.geometry.width());
-			doubleArray[5]  = (double)container.geometry.yOff();
-			doubleArray[6]  = Utils::ParseNumber2(rawList[2].c_str(), doubleArray[4], MathParser::ParseDouble);
-			doubleArray[7]  = Utils::ParseNumber2(rawList[3].c_str(), doubleArray[5], MathParser::ParseDouble);
-			//Bottom Right
-			doubleArray[8]  = (double)(container.geometry.xOff() + container.geometry.width());
-			doubleArray[9]  = (double)(container.geometry.yOff() + container.geometry.height());
-			doubleArray[10] = Utils::ParseNumber2(rawList[4].c_str(), doubleArray[8], MathParser::ParseDouble);
-			doubleArray[11] = Utils::ParseNumber2(rawList[5].c_str(), doubleArray[9], MathParser::ParseDouble);
-			//Bottom Left
-			doubleArray[12] = (double)container.geometry.xOff();
-			doubleArray[13] = (double)(container.geometry.yOff() + container.geometry.height());
-			doubleArray[14] = Utils::ParseNumber2(rawList[6].c_str(), doubleArray[12], MathParser::ParseDouble);
-			doubleArray[15] = Utils::ParseNumber2(rawList[7].c_str(), doubleArray[13], MathParser::ParseDouble);
-
-			container.img.virtualPixelMethod(Magick::TransparentVirtualPixelMethod);
-			container.img.distort(
-				MagickCore::PerspectiveDistortion,
-				16,
-				doubleArray,
-				true
-			);
-		}
-		else if (option.Match(L"OPACITY"))
-		{
-			double a = option.ToDouble();
-			if (a > 100) a = 100;
-			if (a < 0) a = 0;
-			a /= 100;
-
-            auto temp = Magick::Image(
-                Magick::Geometry(container.img.columns(), container.img.rows()),
-                Magick::ColorRGB(1, 1, 1, a)
-            );
-
-            container.img.composite(temp, 0, 0, Magick::DstInCompositeOp);
-		}
-		else if (option.Match(L"SHADE"))
-		{
-			WSVector valList = option.ToList(3);
-
-			container.img.shade(
-				MathParser::ParseInt(valList[0]),
-				MathParser::ParseInt(valList[1]),
-				MathParser::ParseInt(valList[2]) == 1
-			);
-		}
-		else if (option.Match(L"CHANNEL"))
-		{
-			if (option.Equal(L"RED"))
-			{
-				container.img = container.img.separate(Magick::RedChannel);
-			}
-			else if (option.Equal(L"GREEN"))
-			{
-				container.img = container.img.separate(Magick::GreenChannel);
-			}
-			else if (option.Equal(L"BLUE"))
-			{
-				container.img = container.img.separate(Magick::BlueChannel);
-			}
-			else if (option.Equal(L"BLACK"))
-			{
-				container.img = container.img.separate(Magick::BlackChannel);
-			}
-			else if (option.Equal(L"OPACITY"))
-			{
-				container.img = container.img.separate(Magick::OpacityChannel);
-			}
-		}
-		else if (option.Match(L"MODULATE"))
-		{
-			WSVector valList = option.ToList(3, L"100");
-			container.img.modulate(
-				MathParser::ParseInt(valList[0]),
-				MathParser::ParseInt(valList[1]),
-				MathParser::ParseInt(valList[2])
-			);
-		}
-		else if (option.Match(L"OILPAINT"))
-		{
-			WSVector valList = option.ToList(2);
-			container.img.oilPaint(
-				MathParser::ParseInt(valList[0]),
-				MathParser::ParseInt(valList[1])
-			);
-		}
-		else if (option.Match(L"SHEAR"))
-		{
-			WSVector valList = option.ToList(2);
-			container.img.shear(
-				MathParser::ParseInt(valList[0]),
-				MathParser::ParseInt(valList[1])
-			);
-		}
-		else if (option.Match(L"RESIZE"))
-		{
-			WSVector valList = option.ToList(3);
-            Magick::Geometry newSize(
-                MathParser::ParseInt(valList.at(0)),
-                MathParser::ParseInt(valList.at(1))
-            );
-            if (valList.size() > 2)
-                Utils::SetGeometryMode(MathParser::ParseInt(valList.at(2)), newSize);
-
-			container.img.resize(newSize);
-		}
-		else if (option.Match(L"ADAPTIVERESIZE"))
-		{
-			WSVector valList = option.ToList(3);
-			Magick::Geometry newSize(
-				MathParser::ParseInt(valList.at(0)),
-				MathParser::ParseInt(valList.at(1))
-			);
-            if (valList.size() > 2)
-                Utils::SetGeometryMode(MathParser::ParseInt(valList.at(2)), newSize);
-
-			container.img.adaptiveResize(newSize);
-		}
-		else if (option.Match(L"SCALE"))
-		{
-			WSVector valList = option.ToList(2);
-			Magick::Geometry newSize;
-			const size_t percentPos = valList[0].find(L"%");
-			if (percentPos != std::wstring::npos) // One parameter with percentage value
-			{
-				newSize.percent(true);
-				const size_t percent = MathParser::ParseInt(valList[0].substr(0, percentPos));
-				newSize.width(percent);
-				newSize.height(percent);
-			}
-			else
-			{
-				newSize.width(MathParser::ParseInt(valList[0]));
-				newSize.height(MathParser::ParseInt(valList[1]));
-
-                if(valList.size() > 2)
-                    Utils::SetGeometryMode(MathParser::ParseInt(valList[2]), newSize);
-			}
-
-			container.img.scale(newSize);
-		}
-		else if (option.Match(L"SAMPLE"))
-		{
-			WSVector valList = option.ToList(2);
-            Magick::Geometry newSize(
-                MathParser::ParseInt(valList.at(0)),
-                MathParser::ParseInt(valList.at(1))
-            );
-            if (valList.size() > 2)
-                Utils::SetGeometryMode(MathParser::ParseInt(valList.at(2)), newSize);
-
-			container.img.sample(newSize);
-		}
-		else if (option.Match(L"RESAMPLE"))
-		{
-			container.img.resample(option.ToDouble());
-		}
-		else if (option.Match(L"CROP"))
-		{
-			WSVector geometryRaw = option.ToList(5);
-			ssize_t x = MathParser::ParseSSizeT(geometryRaw[0]);
-            ssize_t y = MathParser::ParseSSizeT(geometryRaw[1]);
-            size_t w = MathParser::ParseSizeT(geometryRaw[2]);
-            size_t h = MathParser::ParseSizeT(geometryRaw[3]);
-			const int origin = MathParser::ParseInt(geometryRaw[4]);
-
-			if (w < 0 || h < 0)
-			{
-				RmLog(rm, LOG_WARNING, L"Crop: Invalid width or height value.");
-				return TRUE;
-			}
-			else if (origin > 5 || origin < 0)
-			{
-				RmLog(rm, LOG_WARNING, L"Crop: Invalid Origin value. Left Top origin is used.");
-				return TRUE;
-			}
-
-			//TOP LEFT anchor is default anchor.
-			switch (origin)
-			{
-			case 2: //TOP RIGHT
-				x += container.img.columns();
-				break;
-			case 3: //BOTTOM RIGHT
-				x += container.img.columns();
-				y += container.img.rows();
-				break;
-			case 4: //BOTTOM LEFT
-				y += container.img.rows();
-				break;
-			case 5: //CENTER
-				x += container.img.columns() / 2;
-				y += container.img.rows() / 2;
-				break;
-			}
-
-			if (x < 0)
-			{
-				w += x;
-				x = 0;
-			}
-
-			if (y < 0)
-			{
-				h += y;
-				y = 0;
-			}
-
-			//Chop off size when selected region is out of origin image
-			if ((w + x) > container.img.columns())
-				w = container.img.columns() - x;
-
-			if ((h + y) > container.img.rows())
-				h = container.img.rows() - y;
-
-			container.img.crop(Magick::Geometry(w, h, x, y));
-            // Move cropped image to top left of canvas
-            container.img.page(Magick::Geometry(0, 0, 0, 0));
-        }
-		else if (option.Match(L"ROTATIONALBLUR"))
-		{
-			container.img.rotationalBlur(option.ToDouble());
-		}
-		else if (option.Match(L"COLORIZE"))
-		{
-			WSVector valList = Utils::SeparateList(option.para, L";", 2);
-			container.img.colorize(
-				(unsigned int)MathParser::ParseInt(valList[0]),
-				Utils::ParseColor(valList[1])
-			);
-		}
-        else if (option.Match(L"CHARCOAL"))
-        {
-            WSVector valList = option.ToList(0);
-            const auto vSize = valList.size();
-            if (vSize == 0)
-            {
-                container.img.charcoal();
-            }
-            else if (vSize == 1)
-            {
-                container.img.charcoal(MathParser::ParseDouble(valList.at(0)));
-            }
-            else
-            {
-                container.img.charcoal(
-                    MathParser::ParseDouble(valList.at(0)),
-                    MathParser::ParseDouble(valList.at(1))
-                );
-            }
-        }
-		else if (option.Match(L"GRAYSCALE"))
-		{
-			const int method = MathParser::ParseInt(option.para);
-			if (method > 0 && method <= 9)
-				container.img.grayscale((Magick::PixelIntensityMethod)method);
-		}
-		else if (option.Match(L"ROLL"))
-		{
-			WSVector valList = option.ToList(2, L"0");
-			size_t c = MathParser::ParseSizeT(valList[0]);
-            size_t r = MathParser::ParseSizeT(valList[1]);
-			if (c < 0)
-				c += container.img.columns();
-			if (r < 0)
-				r += container.img.rows();
-
-			container.img.roll(c, r);
-		}
-		else if (option.Match(L"NEGATE"))
-		{
-			container.img.negate(MathParser::ParseBool(option.para));
-		}
-		else if (option.Match(L"IMPLODE"))
-		{
-			container.img.implode(option.ToDouble());
-		}
-		else if (option.Match(L"SPREAD"))
-		{
-			container.img.virtualPixelMethod(Magick::BackgroundVirtualPixelMethod);
-			container.img.spread(option.ToDouble());
-		}
-		else if (option.Match(L"SWIRL"))
-		{
-			container.img.swirl(option.ToDouble());
-		}
-		else if (option.Match(L"MEDIANFILTER"))
-		{
-			container.img.medianFilter(option.ToDouble());
-		}
-		else if (option.Match(L"EQUALIZE"))
-		{
-			container.img.equalize();
-		}
-		else if (option.Match(L"ENHANCE"))
-		{
-			container.img.enhance();
-		}
-		else if (option.Match(L"DESPECKLE"))
-		{
-			container.img.despeckle();
-		}
-		else if (option.Match(L"REDUCENOISE"))
-		{
-			container.img.reduceNoise();
-		}
-		else if (option.Match(L"TRANSPOSE"))
-		{
-			container.img.transpose();
-		}
-		else if (option.Match(L"TRANSVERSE"))
-		{
-			container.img.transverse();
-		}
-		else if (option.Match(L"FLIP"))
-		{
-			container.img.flip();
-		}
-		else if (option.Match(L"FLOP"))
-		{
-			container.img.flop();
-		}
-		else if (option.Match(L"MAGNIFY"))
-		{
-			container.img.magnify();
-		}
-		else if (option.Match(L"MINIFY"))
-		{
-			container.img.minify();
-		}
-		else if (option.Match(L"IGNORE"))
-		{
-			container.isIgnored = MathParser::ParseBool(option.para);
-		}
-
-		return TRUE;
-	}
-	catch (Magick::Exception &error_)
-	{
-		LogError(error_);
-		return FALSE;
-	}
-}
-
-void Measure::ParseInternalVariable(std::wstring &rawSetting, std::shared_ptr<ImgContainer> srcImg)
+void Measure::ReplaceInternalVariable(std::wstring &rawSetting, std::shared_ptr<ImgContainer> srcImg)
 {
 	size_t start = rawSetting.find(L"{");
 	while (start != std::wstring::npos)

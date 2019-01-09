@@ -689,8 +689,7 @@ void Monochrome(std::shared_ptr<ImgContainer> container, Config &option)
 
 void BlueShift(std::shared_ptr<ImgContainer> container, Config &option)
 {
-    const double radian = static_cast<double>(option.ToInt()) / 180.0 * MagickPI;
-    container->img.blueShift(radian);
+    container->img.blueShift(option.ToDouble());
 };
 
 void Rotate(std::shared_ptr<ImgContainer> container, Config &option)

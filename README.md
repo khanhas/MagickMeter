@@ -84,7 +84,8 @@ and option **Install development header and libraries for C and C++** needs to b
 git clone https://github.com/khanhas/MagickMeter
 ```
 
-3. Open `magickmeter.vcxproj` and everything is all set
+3. Open `magickmeter.vcxproj` and everything is all set  
+
 **Note:** You might want to change ImageMagick and its library paths in project setting if you install ImageMagick somewhere else not `C:\Program Files\`.
 
 ### Distribute

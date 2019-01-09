@@ -123,6 +123,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config.cpp" />
+    <ClCompile Include="Effect.cpp" />
     <ClCompile Include="src\FromCombine.cpp" />
     <ClCompile Include="src\FromFile.cpp" />
     <ClCompile Include="src\FromGradient.cpp" />

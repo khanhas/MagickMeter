@@ -1,10 +1,10 @@
 ﻿{
     "name":  "MagickMeter Example Skins",
     "author":  "khanhas",
-    "version":  "0.6.0",
+    "version":  "0.7.1",
     "minimumVersion":  "4.1",
     "minimumWindows":  "5.1",
-    "output":  "./dist/magickmeter_0.6.0.rmskin",
+    "output":  "./dist/magickmeter_0.7.1.rmskin",
     "skinDir":  "./example-skins",
     "configPrefix":  "MagickMeterExample",
     "headerImage":  "./header.bmp",

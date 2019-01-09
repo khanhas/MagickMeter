@@ -65,6 +65,7 @@
     <ClCompile Include="src\MagickMeter.cpp" />
     <ClCompile Include="src\MathParser.cpp" />
     <ClCompile Include="Config.cpp" />
+    <ClCompile Include="Effect.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />

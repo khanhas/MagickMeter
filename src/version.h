@@ -1,4 +1,4 @@
-#define PLUGIN_VERSION "0.6.0.0"
+#define PLUGIN_VERSION "0.7.1.0"
 #define PLUGIN_AUTHOR "khanhas"
 #define PLUGIN_YEAR 2018
 // Has to be the same as the project name!

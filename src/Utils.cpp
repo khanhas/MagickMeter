@@ -171,8 +171,11 @@ std::vector<std::wstring> Utils::SeparateParameter(
 
 std::vector<Config> Utils::ParseConfig(const std::wstring raw)
 {
-    WSVector rawConfig = Utils::SeparateList(raw, L"|", NULL);
     std::vector<Config> config;
+    if (raw.size() == 0) return config;
+
+    WSVector rawConfig = Utils::SeparateList(raw, L"|", NULL);
+
     std::transform(
         rawConfig.begin(),
         rawConfig.end(),

@@ -177,28 +177,31 @@ void Measure::LogError(Magick::Exception error) const noexcept
 
 void Measure::InsertExtend(std::vector<Config> &parentVector, std::wstring parentName, BOOL isRecursion) const
 {
-    const size_t lastIndex = isRecursion ? 0 : 1;
+    const ssize_t lastIndex = isRecursion ? 0 : 1;
 
     // Avoid first iteration
-    for (size_t k = parentVector.size() - 1; k >= lastIndex; k--)
+    for (ssize_t k = parentVector.size() - 1; k >= lastIndex; k--)
     {
         size_t insertIndex = k + 1;
-        Config parentOption = parentVector.at(k);
+
+        Config &parentOption = parentVector.at(k);
 
         if (parentOption.Match(L"EXTEND"))
         {
             auto extendList = parentOption.ToList();
 
-            for (auto &extendName : extendList)
+            for (auto extendName : extendList)
             {
-                if (extendName.size() == 0)
-                    continue;
+                if (extendName.size() == 0) continue;
 
                 // Avoid Extend itself
                 if (Utils::IsEqual(extendName, parentName)) continue;
 
-                auto childVector = Utils::ParseConfig(
-                    RmReadString(rm, extendName.c_str(), L""));
+                std::wstring rawChild = RmReadString(rm, extendName.c_str(), L"");
+
+                if (rawChild.length() == 0) continue;
+
+                auto childVector = Utils::ParseConfig(rawChild);
 
                 InsertExtend(childVector, extendName, TRUE);
 
@@ -209,7 +212,7 @@ void Measure::InsertExtend(std::vector<Config> &parentVector, std::wstring paren
                 }
             }
 
-            parentVector.at(k).isApplied = TRUE;
+            parentOption.isApplied = TRUE;
         }
     }
 }

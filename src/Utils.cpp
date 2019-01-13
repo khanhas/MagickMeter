@@ -27,7 +27,7 @@ Config Utils::GetNamePara(std::wstring input)
         return Config{
             input,
             L"",
-            TRUE
+            FALSE
         };
 	}
 

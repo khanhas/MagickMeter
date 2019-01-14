@@ -7,7 +7,7 @@ BOOL Measure::CreateFromFile(std::shared_ptr<ImgContainer> out)
     std::ostringstream targetFile;
     BOOL isScreenshot = FALSE;
 
-    if (out->config.at(0).Equal(L"SCREENSHOT"))
+    if (_wcsnicmp(out->config.at(0).para.c_str(), L"SCREENSHOT", 10) == 0)
     {
         isScreenshot = TRUE;
         targetFile << "screenshot:";
@@ -18,7 +18,13 @@ BOOL Measure::CreateFromFile(std::shared_ptr<ImgContainer> out)
         if (monitorFlag != std::wstring::npos &&
             (monitorFlag + 1) != baseString.length())
         {
-            const int monitorIndex = MathParser::ParseInt(baseString.substr(11));
+            // Rainmeter monitor index starts at 1
+            // ImageMagick starts at 0
+            int monitorIndex = MathParser::ParseInt(baseString.substr(11)) - 1;
+            if (monitorIndex < 0) {
+                monitorIndex = 0;
+                RmLog(rm, LOG_WARNING, L"Invalid monitor index, should >= 1. Fallback to Monitor 1.");
+            }
             targetFile << "[" << monitorIndex << "]";
         }
 
@@ -76,7 +82,7 @@ BOOL Measure::CreateFromFile(std::shared_ptr<ImgContainer> out)
 
 	try
 	{
-        if (isScreenshot) RmExecute(skin, L"!SetTransparency 0");
+        if (isScreenshot) RmExecute(skin, L"!Hide");
 
         if (isDefinedSize)
 		{
@@ -88,7 +94,7 @@ BOOL Measure::CreateFromFile(std::shared_ptr<ImgContainer> out)
 			out->img.read(targetFile.str());
 		}
 
-		if (isScreenshot) RmExecute(skin, L"!SetTransparency 255");
+		if (isScreenshot) RmExecute(skin, L"!Show");
 
 		if (!out->img.isValid()) return FALSE;
 
@@ -102,6 +108,7 @@ BOOL Measure::CreateFromFile(std::shared_ptr<ImgContainer> out)
 	}
 	catch(Magick::Exception &error_)
 	{
+        if (isScreenshot) RmExecute(skin, L"!Show");
 		LogError(error_);
 		return FALSE;
 	}
